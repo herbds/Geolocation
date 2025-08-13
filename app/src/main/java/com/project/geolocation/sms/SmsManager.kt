@@ -22,26 +22,24 @@ class SmsManager(
             return
         }
 
-        val message = "Mi ubicación: ${location.latitude}, ${location.longitude}\n" +
-                "Ver en Google Maps: https://maps.google.com/?q=${location.latitude},${location.longitude}"
-
+        val message = "Mi ubicación: ${location.latitude}, ${location.longitude}\n"
         try {
             // Method 1: Intent to open SMS app (THIS ONE ALWAYS WORKS)
-            val intent = Intent(Intent.ACTION_SENDTO).apply {
-                data = Uri.parse("smsto:$phoneNumber")
-                putExtra("sms_body", message)
-            }
-            context.startActivity(intent)
-
-            Toast.makeText(context, "Abriendo app de SMS...", Toast.LENGTH_SHORT).show()
-
+            @Suppress("DEPRECATION")
+            val smsManager = android.telephony.SmsManager.getDefault()
+            smsManager.sendTextMessage(phoneNumber, null, message, null, null)
+            Toast.makeText(context, "SMS enviado directamente", Toast.LENGTH_SHORT).show()
+            
         } catch (e: Exception) {
             // Method 2: SmsManager as backup
             try {
-                @Suppress("DEPRECATION")
-                val smsManager = android.telephony.SmsManager.getDefault()
-                smsManager.sendTextMessage(phoneNumber, null, message, null, null)
-                Toast.makeText(context, "SMS enviado directamente", Toast.LENGTH_SHORT).show()
+                val intent = Intent(Intent.ACTION_SENDTO).apply {
+                    data = Uri.parse("smsto:$phoneNumber")
+                    putExtra("sms_body", message)
+                }
+                context.startActivity(intent)
+                Toast.makeText(context, "Abriendo app de SMS...", Toast.LENGTH_SHORT).show()
+                
             } catch (e2: Exception) {
                 android.util.Log.e("SMS_ERROR", "Ambos métodos fallaron: ${e2.message}")
                 Toast.makeText(context, "Error: ${e2.message}", Toast.LENGTH_LONG).show()
