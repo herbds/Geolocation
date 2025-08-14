@@ -1,157 +1,159 @@
-package com.project.geolocation.ui.components
+package com.project.geolocation.ui.screens
 
+import android.location.Location
 import androidx.compose.foundation.background
-import androidx.compose.foundation.gestures.snapping.SnapPosition
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.layout.AlignmentLine
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.project.geolocation.ui.components.LocationDisplay
+import com.project.geolocation.ui.components.PermissionButtons
+import com.project.geolocation.ui.components.PhoneNumberInput
 
 @Composable
-fun PermissionButtons(
+fun MainScreen(
+    currentLocation: Location?,
     hasLocationPermission: Boolean,
     hasSmsPermission: Boolean,
     onRequestLocationPermission: () -> Unit,
     onRequestSmsPermission: () -> Unit,
+    onGetLocation: () -> Unit,
+    onSendSMS: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    Column(
-        modifier = modifier,
-        verticalArrangement = Arrangement.spacedBy(12.dp)
+    var phoneNumber by remember { mutableStateOf("") }
+
+    // BACKGROUND 
+    Box(
+        modifier = modifier
+            .fillMaxSize()
+            .background(Color(0xFFFAF5FF)) // 0xFFFAF5FF
     ) {
-
-
-        Text(
-            text = "Administrador de permisos",
-            fontSize = 18.sp,
-            fontWeight = FontWeight.SemiBold,
-            color = Color(0xFF4C1D95),
-            modifier = Modifier.padding(bottom = 8.dp)
-        )
-
-        // Permission color state
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(8.dp),
-            colors = CardDefaults.cardColors(
-                containerColor = Color(0xFFFEFCFF) // 0xFFFEFCFF
-            ),
-            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+        // CONTENEDOR PRINCIPAL
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(20.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
         ) {
-            Column(
+
+            // Principal Tittle
+            Text(
+                text = "Sistema de Geolocalización",
+                fontSize = 28.sp,
+                fontWeight = FontWeight.Bold,
+                color = Color(0xFF4C1D95), // 0xFF4C1D95
+                textAlign = TextAlign.Center,
+                modifier = Modifier.padding(bottom = 8.dp)
+            )
+
+            // Subtittle
+            Text(
+                text = "Envío de ubicación por SMS",
+                fontSize = 16.sp,
+                fontWeight = FontWeight.Normal,
+                color = Color(0xFF4C1D95), // 0xFF4C1D95
+                textAlign = TextAlign.Center,
+                modifier = Modifier.padding(bottom = 32.dp)
+            )
+
+            // Content card
+            Card(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
+                    .shadow(4.dp, RoundedCornerShape(12.dp)), // Sombra más sutil
+                shape = RoundedCornerShape(12.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = Color.White
+                ),
+                elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
             ) {
-                // Location Permission
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(24.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(24.dp)
                 ) {
-                    Text(
-                        text = "Permiso ubicación:",
-                        fontSize = 14.sp,
-                        color = Color(0xFF374151)
-                    )
-                    Text(
-                        text = if (hasLocationPermission) "✓ Concedido" else "✗ Denegado",
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.Medium,
-                        color = if (hasLocationPermission) Color(0xFF059669) else Color(0xFFDC2626), // Verde o Rojo
-                        modifier = Modifier
-                            .background(
-                                color = if (hasLocationPermission) Color(0xFFD1FAE5) else Color(0xFFFEE2E2), // Fondo verde claro o rojo claro
-                                shape = RoundedCornerShape(12.dp)
-                            )
-                            .padding(horizontal = 8.dp, vertical = 4.dp)
-                    )
-                }
 
-                // SMS Permission
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = "Permiso SMS:",
-                        fontSize = 14.sp,
-                        color = Color(0xFF374151)
+                    PermissionButtons(
+                        hasLocationPermission = hasLocationPermission,
+                        hasSmsPermission = hasSmsPermission,
+                        onRequestLocationPermission = onRequestLocationPermission,
+                        onRequestSmsPermission = onRequestSmsPermission
                     )
-                    Text(
-                        text = if (hasSmsPermission) "✓ Concedido" else "✗ Denegado",
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.Medium,
-                        color = if (hasSmsPermission) Color(0xFF059669) else Color(0xFFDC2626), // Verde o Rojo
+
+                    PhoneNumberInput(
+                        phoneNumber = phoneNumber,
+                        onPhoneNumberChange = { phoneNumber = it }
+                    )
+
+                    LocationDisplay(
+                        currentLocation = currentLocation,
+                        onGetLocation = onGetLocation
+                    )
+
+                    // Send button
+                    Button(
+                        onClick = { onSendSMS(phoneNumber) },
+                        enabled = currentLocation != null && phoneNumber.isNotEmpty() && hasSmsPermission,
                         modifier = Modifier
-                            .background(
-                                color = if (hasSmsPermission) Color(0xFFD1FAE5) else Color(0xFFFEE2E2), // Fondo verde claro o rojo claro
-                                shape = RoundedCornerShape(12.dp)
-                            )
-                            .padding(horizontal = 8.dp, vertical = 4.dp)
-                    )
+                            .fillMaxWidth()
+                            .height(48.dp), // Altura estándar
+                        shape = RoundedCornerShape(8.dp), // Bordes menos redondeados
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = Color(0xFF2563EB), // Azul profesional
+                            disabledContainerColor = Color(0xFFD1D5DB) // Gris claro cuando deshabilitado
+                        )
+                    ) {
+                        Text(
+                            text = "Enviar SMS",
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = Color.White
+                        )
+                    }
                 }
             }
-        }
 
-        Spacer(modifier = Modifier.height(4.dp))
-
-        // Request permission button
-        Button(
-            onClick = onRequestLocationPermission,
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(8.dp)
-        ) {
-            Text("Solicitar permiso ubicación")
-        }
-
-        Button(
-            onClick = onRequestSmsPermission,
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(8.dp)
-        ) {
-            Text("Solicitar permiso SMS")
+            // Page foot
+            Text(
+                text = "Proyecto Uninorte - Geolocalización",
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Light,
+                color = Color(0xFF9CA3AF),
+                textAlign = TextAlign.Center,
+                modifier = Modifier.padding(top = 24.dp)
+            )
         }
     }
 }
 
 @Preview(showBackground = true)
 @Composable
-fun PermissionButtonsPreview(){
-    PermissionButtons(
-        hasLocationPermission = false,   // Uno concedido
-        hasSmsPermission = true,       // Uno denegado
-        onRequestLocationPermission = { },
-        onRequestSmsPermission = { }
-    )
-}
-
-@Preview(showBackground = true)
-@Composable
-fun PermissionButtonsAllGrantedPreview(){
-    PermissionButtons(
-        hasLocationPermission = true,   // Ambos concedidos
+fun MainScreenPreview() {
+    MainScreen(
+        currentLocation = null,
+        hasLocationPermission = false,
         hasSmsPermission = true,
         onRequestLocationPermission = { },
-        onRequestSmsPermission = { }
+        onRequestSmsPermission = { },
+        onGetLocation = { },
+        onSendSMS = { }
     )
 }
