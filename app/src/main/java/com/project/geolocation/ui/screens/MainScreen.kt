@@ -37,7 +37,7 @@ fun MainScreen(
 ) {
     var phoneNumber by remember { mutableStateOf("") }
 
-    // BACKGROUND 
+    // BACKGROUND
     Box(
         modifier = modifier
             .fillMaxSize()
@@ -114,11 +114,11 @@ fun MainScreen(
                         enabled = currentLocation != null && phoneNumber.isNotEmpty() && hasSmsPermission,
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(48.dp), // Altura estándar
-                        shape = RoundedCornerShape(8.dp), // Bordes menos redondeados
+                            .height(48.dp), // Standart Height
+                        shape = RoundedCornerShape(8.dp), // Rounded
                         colors = ButtonDefaults.buttonColors(
-                            containerColor = Color(0xFF2563EB), // Azul profesional
-                            disabledContainerColor = Color(0xFFD1D5DB) // Gris claro cuando deshabilitado
+                            containerColor = Color(0xFF6EE7B7), // Available send
+                            disabledContainerColor = Color(0xFFD1D5DB) // Deniend Send
                         )
                     ) {
                         Text(
