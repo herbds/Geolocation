@@ -22,21 +22,9 @@ class SmsManager(
             return
         }
 
-        val message = "Mi ubicación: ${location.latitude}, ${location.longitude}\n" +
-                "Ver en Google Maps: https://maps.google.com/?q=${location.latitude},${location.longitude}"
+        val message = "Mi ubicación: Latitud ${location.latitude}, Longitud ${location.longitude}"
 
-        try {
-            // Method 1: Intent to open SMS app (THIS ONE ALWAYS WORKS)
-            val intent = Intent(Intent.ACTION_SENDTO).apply {
-                data = Uri.parse("smsto:$phoneNumber")
-                putExtra("sms_body", message)
-            }
-            context.startActivity(intent)
 
-            Toast.makeText(context, "Abriendo app de SMS...", Toast.LENGTH_SHORT).show()
-
-        } catch (e: Exception) {
-            // Method 2: SmsManager as backup
             try {
                 @Suppress("DEPRECATION")
                 val smsManager = android.telephony.SmsManager.getDefault()
@@ -48,4 +36,3 @@ class SmsManager(
             }
         }
     }
-}
