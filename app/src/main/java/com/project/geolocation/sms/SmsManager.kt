@@ -24,6 +24,17 @@ class SmsManager(
             Toast.makeText(context, "No hay ubicación", Toast.LENGTH_SHORT).show()
             return
         }
+        //10 digits number check
+        if (phoneNumber.length != 10) {
+            Toast.makeText(context, "El número de celular debe tener 10 dígitos", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        // Number starts with '3' check
+        if (!phoneNumber.startsWith("3")) {
+            Toast.makeText(context, "El número de celular debe empezar con 3.", Toast.LENGTH_SHORT).show()
+            return
+        }
 
         val timestamp = location.time
         val longitude = location.longitude
