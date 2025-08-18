@@ -8,7 +8,6 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -22,28 +21,20 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.project.geolocation.ui.components.LocationDisplay
 import com.project.geolocation.ui.components.PermissionButtons
-import com.project.geolocation.ui.components.PhoneNumberInput
 
 @Composable
 fun MainScreen(
     currentLocation: Location?,
     hasLocationPermission: Boolean,
-    hasSmsPermission: Boolean,
-    onRequestLocationPermission: () -> Unit,
-    onRequestSmsPermission: () -> Unit,
     onGetLocation: () -> Unit,
-    onSendSMS: (String) -> Unit,
+    onSendLocation: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    var phoneNumber by remember { mutableStateOf("") }
-
-    // BACKGROUND
     Box(
         modifier = modifier
             .fillMaxSize()
-            .background(Color(0xFFFAF5FF)) // 0xFFFAF5FF
+            .background(Color(0xFFFAF5FF))
     ) {
-        // CONTENEDOR PRINCIPAL
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -51,36 +42,29 @@ fun MainScreen(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
-
-            // Principal Tittle
             Text(
                 text = "Sistema de Geolocalización",
                 fontSize = 28.sp,
                 fontWeight = FontWeight.Bold,
-                color = Color(0xFF4C1D95), // 0xFF4C1D95
+                color = Color(0xFF4C1D95),
                 textAlign = TextAlign.Center,
                 modifier = Modifier.padding(bottom = 8.dp)
             )
-
-            // Subtittle
             Text(
-                text = "Envío de ubicación por SMS",
+                text = "Envío de ubicación por Red",
                 fontSize = 16.sp,
                 fontWeight = FontWeight.Normal,
-                color = Color(0xFF4C1D95), // 0xFF4C1D95
+                color = Color(0xFF4C1D95),
                 textAlign = TextAlign.Center,
                 modifier = Modifier.padding(bottom = 32.dp)
             )
-
-            // Content card
+            
             Card(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .shadow(4.dp, RoundedCornerShape(12.dp)), // Sombra más sutil
+                    .shadow(4.dp, RoundedCornerShape(12.dp)),
                 shape = RoundedCornerShape(12.dp),
-                colors = CardDefaults.cardColors(
-                    containerColor = Color.White
-                ),
+                colors = CardDefaults.cardColors(containerColor = Color.White),
                 elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
             ) {
                 Column(
@@ -92,15 +76,7 @@ fun MainScreen(
                 ) {
 
                     PermissionButtons(
-                        hasLocationPermission = hasLocationPermission,
-                        hasSmsPermission = hasSmsPermission,
-                        onRequestLocationPermission = onRequestLocationPermission,
-                        onRequestSmsPermission = onRequestSmsPermission
-                    )
-
-                    PhoneNumberInput(
-                        phoneNumber = phoneNumber,
-                        onPhoneNumberChange = { phoneNumber = it }
+                        hasLocationPermission = hasLocationPermission
                     )
 
                     LocationDisplay(
@@ -108,21 +84,20 @@ fun MainScreen(
                         onGetLocation = onGetLocation
                     )
 
-                    // Send button
                     Button(
-                        onClick = { onSendSMS(phoneNumber) },
-                        enabled = currentLocation != null && phoneNumber.isNotEmpty() && hasSmsPermission,
+                        onClick = { onSendLocation() },
+                        enabled = currentLocation != null && hasLocationPermission,
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(48.dp), // Standart Height
-                        shape = RoundedCornerShape(8.dp), // Rounded
+                            .height(48.dp),
+                        shape = RoundedCornerShape(8.dp),
                         colors = ButtonDefaults.buttonColors(
-                            containerColor = Color(0xFF6EE7B7), // Available send
-                            disabledContainerColor = Color(0xFFD1D5DB) // Deniend Send
+                            containerColor = Color(0xFF4C1D95),
+                            disabledContainerColor = Color(0xFFD1D5DB)
                         )
                     ) {
                         Text(
-                            text = "Enviar SMS",
+                            text = "Enviar Ubicación a Oliver",
                             fontSize = 16.sp,
                             fontWeight = FontWeight.Medium,
                             color = Color.White
@@ -130,8 +105,6 @@ fun MainScreen(
                     }
                 }
             }
-
-            // Page foot
             Text(
                 text = "Proyecto Uninorte - Geolocalización",
                 fontSize = 12.sp,
@@ -144,16 +117,14 @@ fun MainScreen(
     }
 }
 
+
 @Preview(showBackground = true)
 @Composable
 fun MainScreenPreview() {
     MainScreen(
         currentLocation = null,
-        hasLocationPermission = false,
-        hasSmsPermission = true,
-        onRequestLocationPermission = { },
-        onRequestSmsPermission = { },
+        hasLocationPermission = true,
         onGetLocation = { },
-        onSendSMS = { }
+        onSendLocation = { }
     )
 }
