@@ -34,13 +34,18 @@ class MainActivity : ComponentActivity() {
                         permissionManager.requestLocationPermission()
                     }
                 },
-                onSendLocation = {
+                onSendLocation = { protocol, destination ->
                     lifecycleScope.launch {
-                        val ip = "152.201.160.241"
-                        val port = 5050
-                        val identifier = "Oliver Workspace"
-
-                        networkManager.sendLocation(ip, port, locationManager.currentLocation, identifier)
+                        val ip = when (destination) {
+                            "Oliver Workspace" -> "152.201.160.241"
+                            "Hernando Workspace" -> "190.84.119.118"
+                            "Sebastián Workspace" -> "186.170.121.98"
+                            else -> {
+                                Toast.makeText(this@MainActivity, "Destino no reconocido: $destination", Toast.LENGTH_SHORT).show()
+                                return@launch
+                            }
+                        }
+                        networkManager.sendLocation(ip, locationManager.currentLocation, destination, protocol)
                     }
                 }
             )
