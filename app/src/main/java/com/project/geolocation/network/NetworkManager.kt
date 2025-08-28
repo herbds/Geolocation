@@ -28,7 +28,7 @@ class NetworkManager(private val context: Context) {
         val port = when {
             identifier == "Hernando Workspace" && protocol.uppercase() == "TCP" -> 551
             identifier == "Hernando Workspace" && protocol.uppercase() == "UDP" -> 541
-            protocol.uppercase() == "TCP" -> 551
+            protocol.uppercase() == "TCP" -> 5050
             else -> 5049
 
         }
