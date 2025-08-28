@@ -26,8 +26,9 @@ class NetworkManager(private val context: Context) {
         val time = SimpleDateFormat("dd/MM/yyyy HH:mm:ss", Locale.getDefault()).format(Date(location.time))
         val message = "Identifier: $identifier, Lat: ${location.latitude}, Lon: ${location.longitude}, Time: $time"
         val port = when {
-            identifier == "Hernando Workspace" && protocol.uppercase() == "TCP" -> 5051
-            protocol.uppercase() == "TCP" -> 5050
+            identifier == "Hernando Workspace" && protocol.uppercase() == "TCP" -> 551
+            identifier == "Hernando Workspace" && protocol.uppercase() == "UDP" -> 541
+            protocol.uppercase() == "TCP" -> 551
             else -> 5049
 
         }

@@ -37,9 +37,10 @@ class MainActivity : ComponentActivity() {
                 onSendLocation = { protocol, destination ->
                     lifecycleScope.launch {
                         val ip = when (destination) {
-                            "Oliver Workspace" -> "152.201.160.241"
-                            "Hernando Workspace" -> "190.84.119.118"
-                            "Sebastián Workspace" -> "186.170.121.98"
+                            "Oliver Workspace" -> "152.201.183.72"
+                            "Hernando Workspace" -> "181.235.78.228"
+                            "Sebastián Workspace" -> "186.170.97.36"
+                            "Alan Workspace" -> "186.102.171.185"
                             else -> {
                                 Toast.makeText(this@MainActivity, "Destino no reconocido: $destination", Toast.LENGTH_SHORT).show()
                                 return@launch

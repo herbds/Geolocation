@@ -33,7 +33,7 @@ fun MainScreen(
 ) {
     var selectedProtocol by remember { mutableStateOf("TCP") }
 
-    val destinations = listOf("Oliver Workspace", "Hernando Workspace", "Sebastián Workspace")
+    val destinations = listOf("Oliver Workspace", "Hernando Workspace", "Sebastián Workspace", "Alan Workspace")
     var selectedDestinationIndex by remember { mutableStateOf(0) }
 
     Box(
