@@ -4,11 +4,18 @@ import android.os.Bundle
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.lifecycle.lifecycleScope
 import com.project.geolocation.location.LocationManager
 import com.project.geolocation.network.NetworkManager
 import com.project.geolocation.permissions.PermissionManager
 import com.project.geolocation.ui.screens.MainScreen
+import com.project.geolocation.ui.theme.GeolocationTheme
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
@@ -17,6 +24,9 @@ class MainActivity : ComponentActivity() {
     private lateinit var locationManager: LocationManager
     private lateinit var networkManager: NetworkManager
 
+    private var isTransmitting by mutableStateOf(false)
+    private var transmissionJob: Job? = null
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
@@ -24,33 +34,49 @@ class MainActivity : ComponentActivity() {
         permissionManager.checkPermissions()
 
         setContent {
-            MainScreen(
-                currentLocation = locationManager.currentLocation,
-                hasLocationPermission = permissionManager.hasLocationPermission,
-                onGetLocation = {
-                    if (permissionManager.hasLocationPermission) {
-                        locationManager.getLocation()
-                    } else {
-                        permissionManager.requestLocationPermission()
-                    }
-                },
-                onSendLocation = { protocol, destination ->
-                    lifecycleScope.launch {
-                        val ip = when (destination) {
-                            "Oliver Workspace" -> "152.201.183.72"
-                            "Hernando Workspace" -> "181.235.78.228"
-                            "Sebastián Workspace" -> "186.170.97.36"
-                            "Alan Workspace" -> "186.102.171.185"
-                            else -> {
-                                Toast.makeText(this@MainActivity, "Destino no reconocido: $destination", Toast.LENGTH_SHORT).show()
-                                return@launch
-                            }
-                        }
-                        networkManager.sendLocation(ip, locationManager.currentLocation, destination, protocol)
-                    }
-                }
-            )
+            GeolocationTheme {
+                MainScreen(
+                    currentLocation = locationManager.currentLocation,
+                    hasLocationPermission = permissionManager.hasLocationPermission,
+                    isTransmitting = isTransmitting,
+                    onStartTransmission = { startTransmission() },
+                    onStopTransmission = { stopTransmission() }
+                )
+            }
         }
+    }
+
+    private fun startTransmission() {
+        if (!permissionManager.hasLocationPermission) {
+            Toast.makeText(this, "Debe conceder el permiso de ubicación primero", Toast.LENGTH_LONG).show()
+            permissionManager.requestLocationPermission()
+            return
+        }
+
+        if (isTransmitting) return
+
+        isTransmitting = true
+        locationManager.startLocationUpdates()
+        Toast.makeText(this, "Iniciando transmisión...", Toast.LENGTH_SHORT).show()
+
+        transmissionJob = lifecycleScope.launch {
+            while (isActive) {
+                locationManager.currentLocation?.let { location ->
+                    networkManager.broadcastLocationUdp(location)
+                }
+                delay(10000L)
+            }
+        }
+    }
+
+    private fun stopTransmission() {
+        if (!isTransmitting) return
+
+        isTransmitting = false
+        locationManager.stopLocationUpdates()
+        transmissionJob?.cancel()
+        transmissionJob = null
+        Toast.makeText(this, "Transmisión detenida.", Toast.LENGTH_SHORT).show()
     }
 
     private fun initializeManagers() {
@@ -59,18 +85,13 @@ class MainActivity : ComponentActivity() {
             onLocationPermissionResult = { granted ->
                 if (granted) {
                     Toast.makeText(this, "Permiso de ubicación concedido", Toast.LENGTH_SHORT).show()
-                    locationManager.getLocation()
                 } else {
                     Toast.makeText(this, "Permiso de ubicación denegado", Toast.LENGTH_LONG).show()
                 }
             }
         )
 
-        locationManager = LocationManager(
-            context = this,
-            hasLocationPermission = { permissionManager.hasLocationPermission }
-        )
-
-        networkManager = NetworkManager(context = this)
+        locationManager = LocationManager(this)
+        networkManager = NetworkManager(this)
     }
 }

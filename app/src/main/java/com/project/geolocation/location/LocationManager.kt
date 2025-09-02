@@ -4,60 +4,42 @@ import android.content.Context
 import android.location.Location
 import android.os.Looper
 import android.widget.Toast
-import androidx.compose.runtime.*
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import com.google.android.gms.location.*
 
-class LocationManager(
-    private val context: Context,
-    private val hasLocationPermission: () -> Boolean
-) {
+class LocationManager(private val context: Context) {
+
     private val fusedLocationClient: FusedLocationProviderClient =
         LocationServices.getFusedLocationProviderClient(context)
 
     var currentLocation by mutableStateOf<Location?>(null)
         private set
 
-    fun getLocation() {
-        if (!hasLocationPermission()) {
-            Toast.makeText(context, "No hay permiso de ubicación", Toast.LENGTH_SHORT).show()
-            return
+    private val locationCallback = object : LocationCallback() {
+        override fun onLocationResult(result: LocationResult) {
+            currentLocation = result.lastLocation
         }
+    }
+
+    fun startLocationUpdates() {
+        val locationRequest = LocationRequest.Builder(
+            Priority.PRIORITY_HIGH_ACCURACY, 10000L
+        ).build()
 
         try {
-            fusedLocationClient.lastLocation.addOnSuccessListener { location ->
-                if (location != null) {
-                    currentLocation = location
-                    Toast.makeText(context, "Ubicación obtenida", Toast.LENGTH_SHORT).show()
-                } else {
-                    requestNewLocation()
-                }
-            }.addOnFailureListener {
-                Toast.makeText(context, "Error obteniendo ubicación", Toast.LENGTH_SHORT).show()
-            }
+            fusedLocationClient.requestLocationUpdates(
+                locationRequest,
+                locationCallback,
+                Looper.getMainLooper()
+            )
         } catch (e: SecurityException) {
             Toast.makeText(context, "Error de permisos: ${e.message}", Toast.LENGTH_SHORT).show()
         }
     }
 
-    private fun requestNewLocation() {
-        val locationRequest = LocationRequest.Builder(
-            Priority.PRIORITY_HIGH_ACCURACY, 1000L
-        ).setMaxUpdates(1).build()
-
-        try {
-            fusedLocationClient.requestLocationUpdates(
-                locationRequest,
-                object : LocationCallback() {
-                    override fun onLocationResult(result: LocationResult) {
-                        currentLocation = result.lastLocation
-                        Toast.makeText(context, "Nueva ubicación obtenida", Toast.LENGTH_SHORT).show()
-                        fusedLocationClient.removeLocationUpdates(this)
-                    }
-                },
-                Looper.getMainLooper()
-            )
-        } catch (e: SecurityException) {
-            Toast.makeText(context, "Error solicitando nueva ubicación: ${e.message}", Toast.LENGTH_SHORT).show()
-        }
+    fun stopLocationUpdates() {
+        fusedLocationClient.removeLocationUpdates(locationCallback)
     }
 }
