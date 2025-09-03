@@ -61,10 +61,23 @@ class MainActivity : ComponentActivity() {
 
         transmissionJob = lifecycleScope.launch {
             while (isActive) {
-                locationManager.currentLocation?.let { location ->
-                    networkManager.broadcastLocationUdp(location)
+                // Pedir ubicación FRESCA justo antes de cada envío
+                locationManager.requestFreshLocation { freshLocation ->
+                    if (freshLocation != null) {
+                        lifecycleScope.launch {
+                            networkManager.broadcastLocationUdp(freshLocation)
+                        }
+                    } else {
+                        // Si no se pudo obtener ubicación fresca, usar la última conocida
+                        locationManager.currentLocation?.let { location ->
+                            lifecycleScope.launch {
+                                networkManager.broadcastLocationUdp(location)
+                            }
+                        }
+                    }
                 }
-                delay(10000L)
+
+                delay(10000L) // Esperar 10 segundos antes del siguiente envío
             }
         }
     }

@@ -18,8 +18,8 @@ class NetworkManager(private val context: Context) {
 
     private val workspaces = listOf(
         Workspace("Oliver", "geolocationuninorte.ddns.net", 5049),
-        Workspace("Hernando", "181.235.78.228", 541),
-        Workspace("Sebastian", "186.170.97.36", 5049),
+        Workspace("Hernando", "geolocationserver.ddns.net", 5049),
+        Workspace("Sebastian", "geolocationserver04.ddns.net", 5049),
         Workspace("Alan", "186.102.171.185", 5049)
     )
 
