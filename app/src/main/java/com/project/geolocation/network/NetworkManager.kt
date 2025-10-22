@@ -17,10 +17,10 @@ class NetworkManager(private val context: Context) {
     private data class Workspace(val name: String, val ip: String, val port: Int)
 
     private val workspaces = listOf(
-        Workspace("Oliver", "geolocationuninorte.ddns.net", 5049),
-        Workspace("Hernando", "geolocationserver.ddns.net", 5049),
-        Workspace("Sebastian", "geolocationserver04.ddns.net", 5049),
-        Workspace("Alan", "186.102.171.185", 5049)
+        Workspace("Oliver", "3.150.118.46", 5049),
+        Workspace("Hernando", "3.235.100.165", 5049),
+        Workspace("Sebastian", "34.230.160.177", 5049),
+        Workspace("Alan", "35.172.201.236", 5049)
     )
 
     suspend fun broadcastLocationUdp(location: Location) {
