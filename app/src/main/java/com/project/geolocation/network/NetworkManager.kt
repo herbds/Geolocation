@@ -18,7 +18,7 @@ class NetworkManager(private val context: Context) {
 
     private val workspaces = listOf(
         Workspace("Oliver", "3.150.118.46", 5049),
-        Workspace("Hernando", "3.235.100.165", 5049),
+        Workspace("Hernando", "3.227.231.10", 5049),
         Workspace("Sebastian", "34.230.160.177", 5049),
         Workspace("Alan", "35.172.201.236", 5049)
     )

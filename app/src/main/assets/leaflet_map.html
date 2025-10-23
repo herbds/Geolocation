@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Mapa</title>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <style>
+        body { margin: 0; padding: 0; }
+        #mapid { height: 100vh; width: 100vw; }
+    </style>
+</head>
+<body>
+
+<div id="mapid"></div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+    console.log("🗺️ Inicializando mapa...");
+
+    var map = L.map('mapid').setView([11.0087601, -74.7943065], 13);
+    var marker = null;
+
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        maxZoom: 19,
+        attribution: '© OpenStreetMap'
+    }).addTo(map);
+
+    console.log("✅ Mapa creado");
+
+    function updateLocation(lat, lon) {
+        console.log("📍 updateLocation:", lat, lon);
+
+        var newLatLng = L.latLng(lat, lon);
+
+        if (marker) {
+            marker.setLatLng(newLatLng);
+        } else {
+            marker = L.marker(newLatLng).addTo(map)
+                .bindPopup("Mi Ubicación");
+        }
+
+        map.setView(newLatLng, 15);
+        return "OK";
+    }
+</script>
+
+</body>
+</html>
