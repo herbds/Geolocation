@@ -74,6 +74,8 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+
+
     private fun startTransmission() {
         if (!permissionManager.hasLocationPermission) {
             Toast.makeText(this, "Debe conceder el permiso de ubicación primero", Toast.LENGTH_LONG).show()
