@@ -8,30 +8,27 @@ import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.setValue
 import androidx.core.content.ContextCompat
-import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.ViewModelProvider
 import com.project.geolocation.location.LocationManager
 import com.project.geolocation.network.NetworkManager
 import com.project.geolocation.permissions.PermissionManager
+import com.project.geolocation.security.SecureTokenManager
 import com.project.geolocation.service.LocationService
-import com.project.geolocation.ui.screens.MainScreen
+import com.project.geolocation.ui.navigation.AppNavigation
 import com.project.geolocation.ui.theme.GeolocationTheme
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.isActive
-import kotlinx.coroutines.launch
+import com.project.geolocation.viewmodel.AuthViewModel
+import com.project.geolocation.viewmodel.AuthViewModelFactory
+import com.project.geolocation.viewmodel.MainViewModel
+import com.project.geolocation.viewmodel.MainViewModelFactory 
 
 class MainActivity : ComponentActivity() {
-
     private lateinit var permissionManager: PermissionManager
     private lateinit var locationManager: LocationManager
     private lateinit var networkManager: NetworkManager
-
-    private var isTransmitting by mutableStateOf(false)
-    private var transmissionJob: Job? = null
+    private lateinit var secureTokenManager: SecureTokenManager
+    private lateinit var authViewModel: AuthViewModel
+    private lateinit var mainViewModel: MainViewModel
 
     private val notificationPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -57,102 +54,53 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
 
         initializeManagers()
+
         permissionManager.checkPermissions()
         requestNotificationPermission()
         requestBackgroundLocationPermission()
 
+        val authFactory = AuthViewModelFactory(networkManager, secureTokenManager)
+        authViewModel = ViewModelProvider(this, authFactory)[AuthViewModel::class.java]
+
+        val mainFactory = MainViewModelFactory(locationManager, networkManager, permissionManager)
+        mainViewModel = ViewModelProvider(this, mainFactory)[MainViewModel::class.java]
+
         setContent {
             GeolocationTheme {
-                MainScreen(
-                    currentLocation = locationManager.currentLocation,
-                    hasLocationPermission = permissionManager.hasLocationPermission,
-                    isTransmitting = isTransmitting,
-                    onStartTransmission = { startTransmission() },
-                    onStopTransmission = { stopTransmission() }
+                AppNavigation(
+                    authViewModel = authViewModel,
+                    mainViewModel = mainViewModel
                 )
             }
         }
     }
 
-    private fun startTransmission() {
-        if (!permissionManager.hasLocationPermission) {
-            Toast.makeText(this, "Debe conceder el permiso de ubicación primero", Toast.LENGTH_LONG).show()
-            permissionManager.requestLocationPermission()
-            return
-        }
+    private fun initializeManagers() {
+        secureTokenManager = SecureTokenManager(applicationContext)
+        
+        networkManager = NetworkManager(applicationContext, secureTokenManager)
+        
+        locationManager = LocationManager(this)
 
-        if (isTransmitting) return
-
-        isTransmitting = true
-
-        // ✅ NUEVO: Iniciar el servicio en segundo plano
-        startLocationService()
-
-        // ✅ MANTENER: También iniciar actualizaciones en la UI para el mapa
-        locationManager.startLocationUpdates()
-
-        Toast.makeText(this, "Servicio de ubicación iniciado en segundo plano", Toast.LENGTH_SHORT).show()
-
-        transmissionJob = lifecycleScope.launch {
-            while (isActive) {
-                locationManager.requestFreshLocation { freshLocation ->
-                    if (freshLocation != null) {
-                        lifecycleScope.launch {
-                            networkManager.broadcastLocationUdp(freshLocation)
-                        }
-                    } else {
-                        locationManager.currentLocation?.let { location ->
-                            lifecycleScope.launch {
-                                networkManager.broadcastLocationUdp(location)
-                            }
-                        }
-                    }
+        permissionManager = PermissionManager(
+            activity = this,
+            onLocationPermissionResult = { granted ->
+                if (granted) {
+                    Toast.makeText(this, "Permiso de ubicación concedido", Toast.LENGTH_SHORT).show()
+                    requestBackgroundLocationPermission()
+                } else {
+                    Toast.makeText(this, "Permiso de ubicación denegado", Toast.LENGTH_LONG).show()
                 }
-                delay(10000L)
             }
-        }
+        )
     }
-
-    private fun stopTransmission() {
-        if (!isTransmitting) return
-
-        isTransmitting = false
-
-        // ✅ NUEVO: Detener el servicio en segundo plano
-        stopLocationService()
-
-        locationManager.stopLocationUpdates()
-        transmissionJob?.cancel()
-        transmissionJob = null
-
-        Toast.makeText(this, "Servicio de ubicación detenido.", Toast.LENGTH_SHORT).show()
-    }
-
-    // ✅ NUEVO: Función para iniciar el servicio
-    private fun startLocationService() {
-        val serviceIntent = Intent(this, LocationService::class.java)
-
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            ContextCompat.startForegroundService(this, serviceIntent)
-        } else {
-            startService(serviceIntent)
-        }
-    }
-
-    // ✅ NUEVO: Función para detener el servicio
-    private fun stopLocationService() {
-        val serviceIntent = Intent(this, LocationService::class.java)
-        stopService(serviceIntent)
-    }
-
-    // ✅ NUEVO: Solicitar permiso de notificaciones
+        
     private fun requestNotificationPermission() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
         }
     }
 
-    // ✅ NUEVO: Solicitar permiso de ubicación en background
     private fun requestBackgroundLocationPermission() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             if (permissionManager.hasLocationPermission) {
@@ -161,21 +109,17 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun initializeManagers() {
-        permissionManager = PermissionManager(
-            activity = this,
-            onLocationPermissionResult = { granted ->
-                if (granted) {
-                    Toast.makeText(this, "Permiso de ubicación concedido", Toast.LENGTH_SHORT).show()
-                    // ✅ NUEVO: Después de conceder ubicación, pedir background
-                    requestBackgroundLocationPermission()
-                } else {
-                    Toast.makeText(this, "Permiso de ubicación denegado", Toast.LENGTH_LONG).show()
-                }
-            }
-        )
+    private fun startLocationService() {
+        val serviceIntent = Intent(this, LocationService::class.java)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            ContextCompat.startForegroundService(this, serviceIntent)
+        } else {
+            startService(serviceIntent)
+        }
+    }
 
-        locationManager = LocationManager(this)
-        networkManager = NetworkManager(this)
+    private fun stopLocationService() {
+        val serviceIntent = Intent(this, LocationService::class.java)
+        stopService(serviceIntent)
     }
 }

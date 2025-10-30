@@ -19,8 +19,8 @@ import androidx.core.app.ActivityCompat
 import androidx.core.app.NotificationCompat
 import com.google.android.gms.location.*
 import com.project.geolocation.MainActivity
-import com.project.geolocation.R
 import com.project.geolocation.network.NetworkManager
+import com.project.geolocation.security.SecureTokenManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -32,8 +32,8 @@ class LocationService : Service() {
     private lateinit var fusedLocationClient: FusedLocationProviderClient
     private lateinit var locationCallback: LocationCallback
     private lateinit var networkManager: NetworkManager
+    private lateinit var secureTokenManager: SecureTokenManager
 
-    // ✅ NUEVO: WakeLocks para mantener conectividad
     private var wifiLock: WifiManager.WifiLock? = null
     private var wakeLock: PowerManager.WakeLock? = null
 
@@ -51,9 +51,9 @@ class LocationService : Service() {
         Log.d("LocationService", "🚀 Service creado")
 
         fusedLocationClient = LocationServices.getFusedLocationProviderClient(this)
-        networkManager = NetworkManager(this)
+        secureTokenManager = SecureTokenManager(applicationContext)
+        networkManager = NetworkManager(this, secureTokenManager)
 
-        // ✅ Adquirir WakeLocks
         acquireWakeLocks()
 
         createNotificationChannel()
@@ -82,25 +82,31 @@ class LocationService : Service() {
         return START_STICKY
     }
 
-    // ✅ NUEVO: Adquirir WakeLocks
     private fun acquireWakeLocks() {
         try {
-            // WifiLock para mantener la conexión WiFi activa
             val wifiManager = applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
+
+            val wifiLockMode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                WifiManager.WIFI_MODE_FULL_LOW_LATENCY
+            } else {
+                @Suppress("DEPRECATION")
+                WifiManager.WIFI_MODE_FULL_HIGH_PERF
+            }
+
             wifiLock = wifiManager.createWifiLock(
-                WifiManager.WIFI_MODE_FULL_HIGH_PERF,
+                wifiLockMode, // Usar el modo determinado
                 "GeolocationService:WifiLock"
             )
+
             wifiLock?.acquire()
             Log.d("LocationService", "✅ WifiLock adquirido")
 
-            // WakeLock parcial para mantener CPU activa durante envíos
             val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
             wakeLock = powerManager.newWakeLock(
                 PowerManager.PARTIAL_WAKE_LOCK,
                 "GeolocationService:WakeLock"
             )
-            wakeLock?.acquire(10*60*1000L /*10 minutos*/)
+            wakeLock?.acquire(10 * 60 * 1000L /*10 minutos*/)
             Log.d("LocationService", "✅ WakeLock adquirido")
 
         } catch (e: Exception) {
@@ -108,7 +114,6 @@ class LocationService : Service() {
         }
     }
 
-    // ✅ NUEVO: Liberar WakeLocks
     private fun releaseWakeLocks() {
         try {
             wifiLock?.let {
@@ -186,7 +191,7 @@ class LocationService : Service() {
         val notification = NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("📡 Transmitiendo ($successRate% éxito)")
             .setContentText("📍 ${String.format("%.6f", location.latitude)}, ${String.format("%.6f", location.longitude)} | ${locationCount} enviadas")
-            .setSmallIcon(android.R.drawable.ic_menu_mylocation)
+            .setSmallIcon(android.R.drawable.ic_menu_mylocation) // Puedes cambiar esto
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .setOngoing(true)
             .setContentIntent(createPendingIntent())
@@ -224,7 +229,7 @@ class LocationService : Service() {
     override fun onDestroy() {
         super.onDestroy()
         fusedLocationClient.removeLocationUpdates(locationCallback)
-        releaseWakeLocks() // ✅ Liberar WakeLocks
+        releaseWakeLocks()
         serviceScope.cancel()
         Log.d("LocationService", "🛑 Service detenido. Stats: $locationCount ubicaciones, $sendSuccessCount exitosos, $sendErrorCount errores")
     }
