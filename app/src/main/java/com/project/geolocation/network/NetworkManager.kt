@@ -9,22 +9,39 @@ import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
 import java.net.DatagramPacket
 import java.net.DatagramSocket
 import java.net.InetAddress
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
 
+// --- Login Request/Response ---
 @Serializable
-data class FirebaseTokenRequest(val token: String)
+data class LoginRequest(
+    val email: String,
+    val password: String
+)
 
 @Serializable
 data class LoginResponse(val status: String, val token: String? = null)
 
+// --- Register Requests/Responses ---
 @Serializable
-data class RegisterRequest(
-    val password: String,
+data class RegisterStep1Request(
+    val email: String,
+    val password: String
+)
+
+@Serializable
+data class RegisterStep1Response(
+    val status: String,
+    val uid: String? = null,
+    val error: String? = null
+)
+
+@Serializable
+data class RegisterStep2Request(
+    val uid: String,
     val nombre_completo: String,
     val cedula: String,
     val email: String,
@@ -33,10 +50,20 @@ data class RegisterRequest(
 )
 
 @Serializable
-data class RegisterResponse(
+data class RegisterStep2Response(
     val status: String,
     val token: String? = null,
-    val user_id: Int? = null
+    val user_id: Int? = null,
+    val error: String? = null
+)
+
+// --- NUEVO: Estructura para envío UDP ---
+@Serializable
+data class UdpLocationPayload(
+    val token: String,
+    val lat: Double,
+    val lon: Double,
+    val timestamp: String
 )
 
 class NetworkManager(
@@ -50,6 +77,7 @@ class NetworkManager(
         Workspace("Oliver", "oliver.tumaquinaya.com", 5049),
         Workspace("Hernando", "hernando.tumaquinaya.com", 5049),
         Workspace("Sebastian", "sebastian.tumaquinaya.com", 5049),
+        Workspace("Alan", "alan.tumaquinaya.com", 5049),
     )
 
     // ✅ NUEVO: Obtener device ID una sola vez
@@ -62,74 +90,87 @@ class NetworkManager(
     }
 
     private val httpClient = ApiClient.client
+    private val json = Json { ignoreUnknownKeys = true }
 
-    suspend fun loginToInstance(firebaseToken: String): String? {
-        val tokenRequest = FirebaseTokenRequest(token = firebaseToken)
-
-        val workspace = workspaces.first()
-        // --- CORRECCIÓN AQUÍ ---
-        // val url = "https://://${workspace.ip}/auth/firebase-login" // <-- BUG
-        val url = "https://${workspace.ip}/auth/firebase-login" // <-- CORREGIDO
+    // --- Login ---
+    suspend fun loginToInstance(email: String, pass: String): String? {
+        val loginRequest = LoginRequest(email = email, password = pass)
+        val workspace = workspaces.first() // Solo Oliver
+        val url = "https://${workspace.ip}/auth/firebase-login"
 
         return try {
             val response: LoginResponse = httpClient.post(url) {
                 contentType(ContentType.Application.Json)
-                setBody(tokenRequest)
+                setBody(loginRequest)
             }.body()
 
             if (response.status == "success" && response.token != null) {
                 Log.d(TAG, "✅ Login HTTP exitoso. Token recibido.")
                 response.token
             } else {
-                Log.w(TAG, "❌ Login HTTP fallido (lógico) en ${workspace.name}")
+                Log.w(TAG, "❌ Login HTTP fallido en ${workspace.name}")
                 null
             }
         } catch (e: Exception) {
-            Log.e(TAG, "❌ Error HTTP en login de ${workspace.name}: ${e.message}", e)
+            Log.e(TAG, "❌ Error HTTP en login: ${e.message}", e)
             null
         }
     }
 
-    suspend fun registerOnAllInstances(request: RegisterRequest): String? = coroutineScope {
+    // --- Register Step 1 ---
+    suspend fun registerStep1(request: RegisterStep1Request): String? {
+        val workspace = workspaces.first() // Solo Oliver
+        val url = "https://${workspace.ip}/auth/register/step1"
+        
+        return try {
+            val response: RegisterStep1Response = httpClient.post(url) {
+                contentType(ContentType.Application.Json)
+                setBody(request)
+            }.body()
+            
+            if (response.status == "success" && response.uid != null) {
+                Log.d(TAG, "✅ Registro Paso 1 exitoso. UID: ${response.uid}")
+                response.uid
+            } else {
+                Log.e(TAG, "❌ Error en Paso 1: ${response.error ?: "UID nulo"}")
+                null
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "❌ Error HTTP en registro Paso 1: ${e.message}", e)
+            null
+        }
+    }
+
+    // --- Register Step 2 ---
+    suspend fun registerStep2(request: RegisterStep2Request): Map<String, RegisterStep2Response?> = coroutineScope {
         val deferredResponses = workspaces.map { workspace ->
             async(Dispatchers.IO) {
-                val url = "https://${workspace.ip}/auth/register"
-
-                try {
-                    val response: RegisterResponse = httpClient.post(url) {
+                val url = "https://${workspace.ip}/auth/register/step2"
+                val response: RegisterStep2Response? = try {
+                    httpClient.post(url) {
                         contentType(ContentType.Application.Json)
                         setBody(request)
-                    }.body()
-                    Log.d(TAG, "Datos ${request}")
-                    
-                    if (response.status == "success" && response.token != null) {
-                        Log.d(TAG, "✅ Registro exitoso en ${workspace.name}")
-                    } else {
-                        Log.e(TAG, "❌ Error LÓGICO en ${workspace.name}: El servidor respondió con status '${response.status}'")
-                    }
-                    response
+                    }.body<RegisterStep2Response>()
                 } catch (e: Exception) {
-                    Log.e(TAG, "❌ Error HTTP/Red en registro de ${workspace.name}: ${e.message}", e)
+                    Log.e(TAG, "❌ Error HTTP en registro Paso 2 (${workspace.name}): ${e.message}", e)
                     null
                 }
+                
+                if (response?.status == "success" && response.token != null) {
+                    Log.d(TAG, "✅ Registro Paso 2 exitoso en ${workspace.name}")
+                } else {
+                    Log.e(TAG, "❌ Error en Paso 2 (${workspace.name}): ${response?.error ?: "Respuesta nula"}")
+                }
+                
+                workspace.name to response
             }
         }
-
-        val results = deferredResponses.awaitAll()
-
-        if (results.all { it != null && it.status == "success" && it.token != null }) {
-            Log.d(TAG, "✅ Registro exitoso en TODAS las instancias.")
-            results.first()?.token
-        } else {
-            Log.e(TAG, "❌ Falló el registro en una o más instancias.")
-            null
-        }
+        deferredResponses.awaitAll().toMap()
     }
 
-
     /**
-     * Envía la ubicación por UDP a todas las instancias.
-     * El token JWT se lee desde SecureTokenManager.
+     * ✅ NUEVA IMPLEMENTACIÓN: Envía SOLO token, lat, lon, timestamp en JSON
+     * Cada backend decodificará el token para obtener uid y luego su user_id local
      */
     suspend fun broadcastLocationUdp(location: Location) {
         val token = secureTokenManager.getToken()
@@ -138,13 +179,29 @@ class NetworkManager(
             return
         }
 
-        val time = SimpleDateFormat("dd/MM/yyyy HH:mm:ss", Locale.getDefault()).format(Date(location.time))
-        val message = "Lat: ${location.latitude}, Lon: ${location.longitude}, Time: $time"
+        // Crear timestamp en formato esperado por el backend
+        val timestamp = java.text.SimpleDateFormat(
+            "dd/MM/yyyy HH:mm:ss", 
+            java.util.Locale.getDefault()
+        ).format(java.util.Date(location.time))
 
-        Log.d(TAG, "📡 Broadcast iniciado: $message")
+        // Crear payload limpio con solo los 4 campos requeridos
+        val payload = UdpLocationPayload(
+            token = token,
+            lat = location.latitude,
+            lon = location.longitude,
+            timestamp = timestamp
+        )
 
+        // Serializar a JSON
+        val jsonMessage = json.encodeToString(payload)
+        
+        Log.d(TAG, "📡 Broadcasting ubicación a todas las instancias...")
+        Log.d(TAG, "📍 Lat: ${location.latitude}, Lon: ${location.longitude}")
+
+        // Enviar a todas las instancias
         workspaces.forEach { workspace ->
-            sendViaUDP(workspace.ip, workspace.port, message, workspace.name)
+            sendViaUDP(workspace.ip, workspace.port, jsonMessage, workspace.name)
         }
     }
 
