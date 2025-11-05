@@ -3,6 +3,10 @@ package com.project.geolocation.network
 import android.content.Context
 import android.location.Location
 import android.util.Log
+import com.project.geolocation.security.SecureTokenManager
+import io.ktor.client.call.*
+import io.ktor.client.request.*
+import io.ktor.http.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -47,18 +51,15 @@ class NetworkManager(
     private data class Workspace(val name: String, val ip: String, val port: Int)
 
     private val workspaces = listOf(
-        Workspace("Oliver", "oliver.tumaquinaya.com", 5049),
+        Workspace("Alan", "alan.tumaquinaya.com", 5049),
         Workspace("Hernando", "hernando.tumaquinaya.com", 5049),
         Workspace("Sebastian", "sebastian.tumaquinaya.com", 5049),
+
+        
     )
 
-    // ✅ NUEVO: Obtener device ID una sola vez
-    private val deviceId: String by lazy {
-        DeviceIdentifier.getDeviceId(context)
-    }
-
-    private val deviceName: String by lazy {
-        DeviceIdentifier.getDeviceName()
+    companion object {
+        private const val TAG = "NetworkManager"
     }
 
     private val httpClient = ApiClient.client
@@ -101,7 +102,7 @@ class NetworkManager(
                         setBody(request)
                     }.body()
                     Log.d(TAG, "Datos ${request}")
-                    
+
                     if (response.status == "success" && response.token != null) {
                         Log.d(TAG, "✅ Registro exitoso en ${workspace.name}")
                     } else {
@@ -139,9 +140,9 @@ class NetworkManager(
         }
 
         val time = SimpleDateFormat("dd/MM/yyyy HH:mm:ss", Locale.getDefault()).format(Date(location.time))
-        val message = "Lat: ${location.latitude}, Lon: ${location.longitude}, Time: $time"
+        val message = "Lat: ${location.latitude}, Lon: ${location.longitude}, Time: $time, Token: $token"
 
-        Log.d(TAG, "📡 Broadcast iniciado: $message")
+        Log.d(TAG, "📡 Broadcast UDP iniciado...")
 
         workspaces.forEach { workspace ->
             sendViaUDP(workspace.ip, workspace.port, message, workspace.name)
@@ -153,19 +154,17 @@ class NetworkManager(
             var socket: DatagramSocket? = null
             try {
                 socket = DatagramSocket()
-                socket.soTimeout = 3000 // ✅ Timeout de 3 segundos
+                socket.soTimeout = 3000
 
-            val buffer = message.toByteArray(Charsets.UTF_8)
-            val address = InetAddress.getByName(ipAddress)
-            val packet = DatagramPacket(buffer, buffer.size, address, port)
+                val buffer = message.toByteArray(Charsets.UTF_8)
+                val address = InetAddress.getByName(ipAddress)
+                val packet = DatagramPacket(buffer, buffer.size, address, port)
 
                 socket.send(packet)
-
                 Log.d(TAG, "✅ UDP enviado a $identifier ($ipAddress:$port)")
 
             } catch (e: Exception) {
                 Log.e(TAG, "❌ Error UDP para $identifier: ${e.message}", e)
-                // ✅ Solo registrar error, NO mostrar Toast en segundo plano
             } finally {
                 socket?.close()
             }
