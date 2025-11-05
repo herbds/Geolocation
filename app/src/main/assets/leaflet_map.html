@@ -6,21 +6,85 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <style>
-        body { margin: 0; padding: 0; }
-        #mapid { height: 100vh; width: 100vw; }
+        html, body, #mapid {
+            height: 100%;
+            width: 100%;
+            margin: 0;
+            padding: 0;
+        }
+
+        /* Botón para limpiar destino */
+        .clear-destination-btn {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            z-index: 1000;
+            background: white;
+            padding: 10px 15px;
+            border: 2px solid #4C1D95;
+            border-radius: 8px;
+            font-weight: bold;
+            color: #4C1D95;
+            cursor: pointer;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+            display: none;
+        }
+        .clear-destination-btn:active {
+            background: #f0f0f0;
+        }
+
+        /* Caja de información */
+        .info-box {
+            position: absolute;
+            bottom: 10px;
+            left: 10px;
+            z-index: 1000;
+            background: white;
+            padding: 10px 15px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+            font-family: Arial, sans-serif;
+            display: none;
+        }
+        .info-box .label {
+            font-weight: bold;
+            color: #4C1D95;
+        }
+        .info-box .value {
+            color: #333;
+            margin-left: 5px;
+        }
     </style>
 </head>
 <body>
 
 <div id="mapid"></div>
+<button id="clearBtn" class="clear-destination-btn" onclick="clearDestination()">✖ Limpiar Destino</button>
+<div id="infoBox" class="info-box">
+    <span class="label">Distancia:</span>
+    <span class="value" id="distanceText">-</span>
+</div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
+    // Captura errores de JS
+    window.onerror = function(msg, url, line, col, error) {
+        console.error("❌ JS ERROR:", msg, "en línea", line);
+        return false;
+    };
+
     console.log("🗺️ Inicializando mapa...");
 
+    // Crear mapa centrado en Barranquilla
     var map = L.map('mapid').setView([11.0087601, -74.7943065], 13);
-    var marker = null;
+    var currentMarker = null;
+    var destinationMarker = null;
+    var routeLine = null;
 
+    var currentLocation = null;
+    var destinationLocation = null;
+
+    // Capa de OpenStreetMap
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         maxZoom: 19,
         attribution: '© OpenStreetMap'
@@ -28,22 +92,133 @@
 
     console.log("✅ Mapa creado");
 
+    // Icono azul para la ubicación actual
+    var currentIcon = L.icon({
+        iconUrl: 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjQiIGhlaWdodD0iMjQiIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPGNpcmNsZSBjeD0iMTIiIGN5PSIxMiIgcj0iMTAiIGZpbGw9IiMyNTYzRUIiLz4KPGNpcmNsZSBjeD0iMTIiIGN5PSIxMiIgcj0iNiIgZmlsbD0id2hpdGUiLz4KPC9zdmc+',
+        iconSize: [24, 24],
+        iconAnchor: [12, 12],
+    });
+
+    // Icono rojo para el destino
+    var destinationIcon = L.icon({
+        iconUrl: 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMzIiIGhlaWdodD0iMzIiIHZpZXdCb3g9IjAgMCAzMiAzMiIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHBhdGggZD0iTTE2IDNDMTEuMDMgMyA3IDcuMDMgNyAxMkM3IDE4Ljc1IDE2IDI5IDE2IDI5QzE2IDI5IDI1IDE4Ljc1IDI1IDEyQzI1IDcuMDMgMjAuOTcgMyAxNiAzWk0xNiAxNUMxNC4zNSAxNSAxMyAxMy42NSAxMyAxMkMxMyAxMC4zNSAxNC4zNSA5IDE2IDlDMTcuNjUgOSAxOSAxMC4zNSAxOSAxMkMxOSAxMy42NSAxNy42NSAxNSAxNiAxNVoiIGZpbGw9IiNFRjQ0NDQiLz4KPC9zdmc+',
+        iconSize: [32, 32],
+        iconAnchor: [16, 32],
+    });
+
+    /**
+     * Actualizar la ubicación actual desde Android
+     */
     function updateLocation(lat, lon) {
         console.log("📍 updateLocation:", lat, lon);
-
         var newLatLng = L.latLng(lat, lon);
+        currentLocation = newLatLng;
 
-        if (marker) {
-            marker.setLatLng(newLatLng);
+        if (currentMarker) {
+            currentMarker.setLatLng(newLatLng);
         } else {
-            marker = L.marker(newLatLng).addTo(map)
-                .bindPopup("Mi Ubicación");
+            currentMarker = L.marker(newLatLng, {icon: currentIcon}).addTo(map)
+                .bindPopup("📍 Mi Ubicación");
         }
 
         map.setView(newLatLng, 15);
+
+        if (destinationLocation) updateRouteLine();
+
         return "OK";
     }
-</script>
 
+    /**
+     * Evento de click en el mapa para seleccionar destino
+     */
+    map.on('click', function(e) {
+        console.log("🎯 Click en mapa:", e.latlng);
+        setDestination(e.latlng.lat, e.latlng.lng);
+
+        // Evita romper el mapa si la interfaz Android no existe aún
+        try {
+            if (window.Android && typeof Android.onDestinationSelected === "function") {
+                Android.onDestinationSelected(e.latlng.lat, e.latlng.lng);
+            }
+        } catch (err) {
+            console.error("⚠️ Error enviando destino a Android:", err);
+        }
+    });
+
+    /**
+     * Establecer destino
+     */
+    function setDestination(lat, lon) {
+        var destLatLng = L.latLng(lat, lon);
+        destinationLocation = destLatLng;
+
+        if (destinationMarker) {
+            destinationMarker.setLatLng(destLatLng);
+        } else {
+            destinationMarker = L.marker(destLatLng, {icon: destinationIcon}).addTo(map)
+                .bindPopup("🎯 Destino");
+        }
+
+    }
+
+    /**
+     * Dibujar línea y calcular distancia
+     */
+    function updateRouteLine() {
+        if (!currentLocation || !destinationLocation) return;
+
+        if (routeLine) map.removeLayer(routeLine);
+
+        routeLine = L.polyline([currentLocation, destinationLocation], {
+            color: '#4C1D95',
+            weight: 3,
+            opacity: 0.7,
+            dashArray: '10, 10'
+        }).addTo(map);
+
+        var distance = currentLocation.distanceTo(destinationLocation);
+        var text = distance >= 1000 ? (distance/1000).toFixed(2) + " km" : distance.toFixed(0) + " m";
+
+        document.getElementById('distanceText').textContent = text;
+        document.getElementById('infoBox').style.display = 'block';
+
+        var bounds = L.latLngBounds([currentLocation, destinationLocation]);
+        map.fitBounds(bounds, {padding: [50, 50]});
+
+        console.log("📏 Distancia calculada:", text);
+    }
+
+    /**
+     * Limpiar destino
+     */
+    function clearDestination() {
+        if (destinationMarker) {
+            map.removeLayer(destinationMarker);
+            destinationMarker = null;
+        }
+        if (routeLine) {
+            map.removeLayer(routeLine);
+            routeLine = null;
+        }
+        destinationLocation = null;
+
+        document.getElementById('clearBtn').style.display = 'none';
+        document.getElementById('infoBox').style.display = 'none';
+
+        if (currentLocation) map.setView(currentLocation, 15);
+
+        console.log("🧹 Destino limpiado");
+
+        try {
+            if (window.Android && typeof Android.onDestinationCleared === "function") {
+                Android.onDestinationCleared();
+            }
+        } catch (err) {
+            console.error("⚠️ Error notificando limpieza:", err);
+        }
+    }
+
+    console.log("✅ Script cargado y listo");
+</script>
 </body>
 </html>
