@@ -5,17 +5,16 @@ import androidx.lifecycle.ViewModelProvider
 import com.project.geolocation.location.LocationManager
 import com.project.geolocation.network.NetworkManager
 import com.project.geolocation.permissions.PermissionManager
-import com.project.geolocation.security.SecureTokenManager
+import com.project.geolocation.security.LocalAuthManager
 
 class AuthViewModelFactory(
-    private val networkManager: NetworkManager,
-    private val secureTokenManager: SecureTokenManager
+    private val localAuthManager: LocalAuthManager
 ) : ViewModelProvider.Factory {
 
     @Suppress("UNCHECKED_CAST")
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
         if (modelClass.isAssignableFrom(AuthViewModel::class.java)) {
-            return AuthViewModel(networkManager, secureTokenManager) as T
+            return AuthViewModel(localAuthManager) as T
         }
         throw IllegalArgumentException("Unknown ViewModel class")
     }

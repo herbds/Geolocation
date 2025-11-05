@@ -3,16 +3,8 @@ package com.project.geolocation.network
 import android.content.Context
 import android.location.Location
 import android.util.Log
-import com.project.geolocation.security.SecureTokenManager
-import io.ktor.client.call.*
-import io.ktor.client.request.*
-import io.ktor.http.*
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.async
-import kotlinx.coroutines.awaitAll
-import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withContext
-import kotlinx.serialization.Serializable
 import java.net.DatagramPacket
 import java.net.DatagramSocket
 import java.net.InetAddress
@@ -20,32 +12,9 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
-@Serializable
-data class FirebaseTokenRequest(val token: String)
-
-@Serializable
-data class LoginResponse(val status: String, val token: String? = null)
-
-@Serializable
-data class RegisterRequest(
-    val password: String,
-    val nombre_completo: String,
-    val cedula: String,
-    val email: String,
-    val telefono: String,
-    val empresa: String
-)
-
-@Serializable
-data class RegisterResponse(
-    val status: String,
-    val token: String? = null,
-    val user_id: Int? = null
-)
-
 class NetworkManager(
     private val context: Context,
-    private val secureTokenManager: SecureTokenManager
+    private val getUserId: () -> String? // Lambda to get current user cedula (ID number)
 ) {
 
     private data class Workspace(val name: String, val ip: String, val port: Int)
@@ -54,95 +23,30 @@ class NetworkManager(
         Workspace("Alan", "alan.tumaquinaya.com", 5049),
         Workspace("Hernando", "hernando.tumaquinaya.com", 5049),
         Workspace("Sebastian", "sebastian.tumaquinaya.com", 5049),
-
-        
+        Workspace("Oliver", "oliver.tumaquinaya.com", 5049),
     )
 
     companion object {
         private const val TAG = "NetworkManager"
     }
 
-    private val httpClient = ApiClient.client
-
-    suspend fun loginToInstance(firebaseToken: String): String? {
-        val tokenRequest = FirebaseTokenRequest(token = firebaseToken)
-
-        val workspace = workspaces.first()
-        // --- CORRECCIÓN AQUÍ ---
-        // val url = "https://://${workspace.ip}/auth/firebase-login" // <-- BUG
-        val url = "https://${workspace.ip}/auth/firebase-login" // <-- CORREGIDO
-
-        return try {
-            val response: LoginResponse = httpClient.post(url) {
-                contentType(ContentType.Application.Json)
-                setBody(tokenRequest)
-            }.body()
-
-            if (response.status == "success" && response.token != null) {
-                Log.d(TAG, "✅ Login HTTP exitoso. Token recibido.")
-                response.token
-            } else {
-                Log.w(TAG, "❌ Login HTTP fallido (lógico) en ${workspace.name}")
-                null
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "❌ Error HTTP en login de ${workspace.name}: ${e.message}", e)
-            null
-        }
-    }
-
-    suspend fun registerOnAllInstances(request: RegisterRequest): String? = coroutineScope {
-        val deferredResponses = workspaces.map { workspace ->
-            async(Dispatchers.IO) {
-                val url = "https://${workspace.ip}/auth/register"
-
-                try {
-                    val response: RegisterResponse = httpClient.post(url) {
-                        contentType(ContentType.Application.Json)
-                        setBody(request)
-                    }.body()
-                    Log.d(TAG, "Datos ${request}")
-
-                    if (response.status == "success" && response.token != null) {
-                        Log.d(TAG, "✅ Registro exitoso en ${workspace.name}")
-                    } else {
-                        Log.e(TAG, "❌ Error LÓGICO en ${workspace.name}: El servidor respondió con status '${response.status}'")
-                    }
-                    response
-                } catch (e: Exception) {
-                    Log.e(TAG, "❌ Error HTTP/Red en registro de ${workspace.name}: ${e.message}", e)
-                    null
-                }
-            }
-        }
-
-        val results = deferredResponses.awaitAll()
-
-        if (results.all { it != null && it.status == "success" && it.token != null }) {
-            Log.d(TAG, "✅ Registro exitoso en TODAS las instancias.")
-            results.first()?.token
-        } else {
-            Log.e(TAG, "❌ Falló el registro en una o más instancias.")
-            null
-        }
-    }
-
-
     /**
-     * Envía la ubicación por UDP a todas las instancias.
-     * El token JWT se lee desde SecureTokenManager.
+     * Sends location via UDP to all instances.
+     * Format: latitude, longitude, timestamp, user_id (cedula)
      */
     suspend fun broadcastLocationUdp(location: Location) {
-        val token = secureTokenManager.getToken()
-        if (token == null) {
-            Log.e(TAG, "📡 Error: No hay JWT guardado. No se puede enviar ubicación.")
+        val userId = getUserId()
+        if (userId == null) {
+            Log.e(TAG, "📡 Error: No user ID available. Cannot send location.")
             return
         }
 
-        val time = SimpleDateFormat("dd/MM/yyyy HH:mm:ss", Locale.getDefault()).format(Date(location.time))
-        val message = "Lat: ${location.latitude}, Lon: ${location.longitude}, Time: $time, Token: $token"
+        val timestamp = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.getDefault()).format(Date(location.time))
+        
+        // Format: latitude, longitude, timestamp, user_id
+        val message = "Lat: ${location.latitude}, Lon: ${location.longitude}, Time: $timestamp, UserID: $userId"
 
-        Log.d(TAG, "📡 Broadcast UDP iniciado...")
+        Log.d(TAG, "📡 Broadcasting location with user_id: $userId")
 
         workspaces.forEach { workspace ->
             sendViaUDP(workspace.ip, workspace.port, message, workspace.name)
@@ -161,10 +65,11 @@ class NetworkManager(
                 val packet = DatagramPacket(buffer, buffer.size, address, port)
 
                 socket.send(packet)
-                Log.d(TAG, "✅ UDP enviado a $identifier ($ipAddress:$port)")
+                Log.d(TAG, "Message: ($message)")
+                Log.d(TAG, "✅ UDP sent to $identifier ($ipAddress:$port)")
 
             } catch (e: Exception) {
-                Log.e(TAG, "❌ Error UDP para $identifier: ${e.message}", e)
+                Log.e(TAG, "❌ UDP error for $identifier: ${e.message}", e)
             } finally {
                 socket?.close()
             }

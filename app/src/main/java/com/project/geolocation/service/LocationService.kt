@@ -20,7 +20,7 @@ import androidx.core.app.NotificationCompat
 import com.google.android.gms.location.*
 import com.project.geolocation.MainActivity
 import com.project.geolocation.network.NetworkManager
-import com.project.geolocation.security.SecureTokenManager
+import com.project.geolocation.security.LocalAuthManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -32,7 +32,7 @@ class LocationService : Service() {
     private lateinit var fusedLocationClient: FusedLocationProviderClient
     private lateinit var locationCallback: LocationCallback
     private lateinit var networkManager: NetworkManager
-    private lateinit var secureTokenManager: SecureTokenManager
+    private lateinit var localAuthManager: LocalAuthManager
 
     private var wifiLock: WifiManager.WifiLock? = null
     private var wakeLock: PowerManager.WakeLock? = null
@@ -48,11 +48,15 @@ class LocationService : Service() {
 
     override fun onCreate() {
         super.onCreate()
-        Log.d("LocationService", "🚀 Service creado")
+        Log.d("LocationService", "🚀 Service created")
 
         fusedLocationClient = LocationServices.getFusedLocationProviderClient(this)
-        secureTokenManager = SecureTokenManager(applicationContext)
-        networkManager = NetworkManager(this, secureTokenManager)
+        localAuthManager = LocalAuthManager(applicationContext)
+        
+        // Initialize NetworkManager with lambda to get current user cedula
+        networkManager = NetworkManager(this) {
+            localAuthManager.getLoggedUserCedula()
+        }
 
         acquireWakeLocks()
 
@@ -62,9 +66,9 @@ class LocationService : Service() {
             override fun onLocationResult(locationResult: LocationResult) {
                 locationResult.lastLocation?.let { location ->
                     locationCount++
-                    Log.d("LocationService", "📍 Ubicación #$locationCount: ${location.latitude}, ${location.longitude}")
+                    Log.d("LocationService", "📍 Location #$locationCount: ${location.latitude}, ${location.longitude}")
 
-                    sendLocationToAWS(location)
+                    sendLocationToServers(location)
                     updateNotification(location)
                 }
             }
@@ -72,7 +76,7 @@ class LocationService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        Log.d("LocationService", "▶️ Service iniciado")
+        Log.d("LocationService", "▶️ Service started")
 
         val notification = createNotification()
         startForeground(NOTIFICATION_ID, notification)
@@ -94,23 +98,23 @@ class LocationService : Service() {
             }
 
             wifiLock = wifiManager.createWifiLock(
-                wifiLockMode, // Usar el modo determinado
+                wifiLockMode,
                 "GeolocationService:WifiLock"
             )
 
             wifiLock?.acquire()
-            Log.d("LocationService", "✅ WifiLock adquirido")
+            Log.d("LocationService", "✅ WifiLock acquired")
 
             val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
             wakeLock = powerManager.newWakeLock(
                 PowerManager.PARTIAL_WAKE_LOCK,
                 "GeolocationService:WakeLock"
             )
-            wakeLock?.acquire(10 * 60 * 1000L /*10 minutos*/)
-            Log.d("LocationService", "✅ WakeLock adquirido")
+            wakeLock?.acquire(10 * 60 * 1000L /*10 minutes*/)
+            Log.d("LocationService", "✅ WakeLock acquired")
 
         } catch (e: Exception) {
-            Log.e("LocationService", "❌ Error adquiriendo WakeLocks: ${e.message}")
+            Log.e("LocationService", "❌ Error acquiring WakeLocks: ${e.message}")
         }
     }
 
@@ -119,17 +123,17 @@ class LocationService : Service() {
             wifiLock?.let {
                 if (it.isHeld) {
                     it.release()
-                    Log.d("LocationService", "🔓 WifiLock liberado")
+                    Log.d("LocationService", "🔓 WifiLock released")
                 }
             }
             wakeLock?.let {
                 if (it.isHeld) {
                     it.release()
-                    Log.d("LocationService", "🔓 WakeLock liberado")
+                    Log.d("LocationService", "🔓 WakeLock released")
                 }
             }
         } catch (e: Exception) {
-            Log.e("LocationService", "❌ Error liberando WakeLocks: ${e.message}")
+            Log.e("LocationService", "❌ Error releasing WakeLocks: ${e.message}")
         }
     }
 
@@ -152,9 +156,9 @@ class LocationService : Service() {
                 locationCallback,
                 Looper.getMainLooper()
             )
-            Log.d("LocationService", "✅ Actualizaciones de ubicación iniciadas (cada 10s)")
+            Log.d("LocationService", "✅ Location updates started (every 10s)")
         } else {
-            Log.e("LocationService", "❌ Sin permisos de ubicación")
+            Log.e("LocationService", "❌ No location permission")
             stopSelf()
         }
     }
@@ -190,8 +194,8 @@ class LocationService : Service() {
 
         val notification = NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("📡 Transmitiendo ($successRate% éxito)")
-            .setContentText("📍 ${String.format("%.6f", location.latitude)}, ${String.format("%.6f", location.longitude)} | ${locationCount} enviadas")
-            .setSmallIcon(android.R.drawable.ic_menu_mylocation) // Puedes cambiar esto
+            .setContentText("📍 ${String.format("%.6f", location.latitude)}, ${String.format("%.6f", location.longitude)} | $locationCount enviadas")
+            .setSmallIcon(android.R.drawable.ic_menu_mylocation)
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .setOngoing(true)
             .setContentIntent(createPendingIntent())
@@ -211,17 +215,17 @@ class LocationService : Service() {
         )
     }
 
-    private fun sendLocationToAWS(location: Location) {
-        Log.d("LocationService", "📤 Enviando a AWS: ${location.latitude}, ${location.longitude}")
+    private fun sendLocationToServers(location: Location) {
+        Log.d("LocationService", "📤 Sending to servers: ${location.latitude}, ${location.longitude}")
 
         serviceScope.launch {
             try {
                 networkManager.broadcastLocationUdp(location)
                 sendSuccessCount++
-                Log.d("LocationService", "✅ Enviado exitosamente (total exitosos: $sendSuccessCount)")
+                Log.d("LocationService", "✅ Sent successfully (total successful: $sendSuccessCount)")
             } catch (e: Exception) {
                 sendErrorCount++
-                Log.e("LocationService", "❌ Error enviando a AWS (total errores: $sendErrorCount): ${e.message}", e)
+                Log.e("LocationService", "❌ Error sending to servers (total errors: $sendErrorCount): ${e.message}", e)
             }
         }
     }
@@ -231,7 +235,7 @@ class LocationService : Service() {
         fusedLocationClient.removeLocationUpdates(locationCallback)
         releaseWakeLocks()
         serviceScope.cancel()
-        Log.d("LocationService", "🛑 Service detenido. Stats: $locationCount ubicaciones, $sendSuccessCount exitosos, $sendErrorCount errores")
+        Log.d("LocationService", "🛑 Service stopped. Stats: $locationCount locations, $sendSuccessCount successful, $sendErrorCount errors")
     }
 
     override fun onBind(intent: Intent?): IBinder? = null

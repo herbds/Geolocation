@@ -13,7 +13,7 @@ import androidx.lifecycle.ViewModelProvider
 import com.project.geolocation.location.LocationManager
 import com.project.geolocation.network.NetworkManager
 import com.project.geolocation.permissions.PermissionManager
-import com.project.geolocation.security.SecureTokenManager
+import com.project.geolocation.security.LocalAuthManager
 import com.project.geolocation.service.LocationService
 import com.project.geolocation.ui.navigation.AppNavigation
 import com.project.geolocation.ui.theme.GeolocationTheme
@@ -26,7 +26,7 @@ class MainActivity : ComponentActivity() {
     private lateinit var permissionManager: PermissionManager
     private lateinit var locationManager: LocationManager
     private lateinit var networkManager: NetworkManager
-    private lateinit var secureTokenManager: SecureTokenManager
+    private lateinit var localAuthManager: LocalAuthManager
     private lateinit var authViewModel: AuthViewModel
     private lateinit var mainViewModel: MainViewModel
 
@@ -59,7 +59,7 @@ class MainActivity : ComponentActivity() {
         requestNotificationPermission()
         requestBackgroundLocationPermission()
 
-        val authFactory = AuthViewModelFactory(networkManager, secureTokenManager)
+        val authFactory = AuthViewModelFactory(localAuthManager)
         authViewModel = ViewModelProvider(this, authFactory)[AuthViewModel::class.java]
 
         val mainFactory = MainViewModelFactory(locationManager, networkManager, permissionManager)
@@ -76,9 +76,14 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun initializeManagers() {
-        secureTokenManager = SecureTokenManager(applicationContext)
+        // Initialize LocalAuthManager for local authentication
+        localAuthManager = LocalAuthManager(applicationContext)
         
-        networkManager = NetworkManager(applicationContext, secureTokenManager)
+        // Initialize NetworkManager with lambda to get current user cedula
+        networkManager = NetworkManager(applicationContext) {
+            // Provides current logged user cedula (ID number) for UDP messages
+            localAuthManager.getLoggedUserCedula()
+        }
         
         locationManager = LocationManager(this)
 
