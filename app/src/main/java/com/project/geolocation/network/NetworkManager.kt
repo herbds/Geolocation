@@ -41,10 +41,10 @@ class NetworkManager(
             return
         }
 
-        val timestamp = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.getDefault()).format(Date(location.time))
+        val time = SimpleDateFormat("dd/MM/yyyy HH:mm:ss", Locale.getDefault()).format(Date(location.time))
         
         // Format: latitude, longitude, timestamp, user_id
-        val message = "Lat: ${location.latitude}, Lon: ${location.longitude}, Time: $timestamp, UserID: $userId"
+        val message = "Lat: ${location.latitude}, Lon: ${location.longitude}, Time: $time, UserID: $userId"
 
         Log.d(TAG, "📡 Broadcasting location with user_id: $userId")
 
