@@ -164,28 +164,49 @@
     /**
      * Dibujar línea y calcular distancia
      */
+    /**
+ * Dibujar ruta por calles usando OSRM
+ */
     function updateRouteLine() {
         if (!currentLocation || !destinationLocation) return;
 
-        if (routeLine) map.removeLayer(routeLine);
+        console.log("🚗 Solicitando ruta OSRM...");
 
-        routeLine = L.polyline([currentLocation, destinationLocation], {
-            color: '#4C1D95',
-            weight: 3,
-            opacity: 0.7,
-            dashArray: '10, 10'
-        }).addTo(map);
+        var url = `https://router.project-osrm.org/route/v1/driving/` +
+            `${currentLocation.lng},${currentLocation.lat};${destinationLocation.lng},${destinationLocation.lat}` +
+            `?overview=full&geometries=geojson`;
 
-        var distance = currentLocation.distanceTo(destinationLocation);
-        var text = distance >= 1000 ? (distance/1000).toFixed(2) + " km" : distance.toFixed(0) + " m";
+        fetch(url)
+            .then(response => response.json())
+            .then(data => {
+                if (data.routes && data.routes.length > 0) {
+                    var route = data.routes[0];
+                    var coords = route.geometry.coordinates.map(c => [c[1], c[0]]); // invertir [lon, lat]
 
-        document.getElementById('distanceText').textContent = text;
-        document.getElementById('infoBox').style.display = 'block';
+                    if (routeLine) map.removeLayer(routeLine);
+                    routeLine = L.polyline(coords, {
+                        color: '#4C1D95',
+                        weight: 4,
+                        opacity: 0.8
+                    }).addTo(map);
 
-        var bounds = L.latLngBounds([currentLocation, destinationLocation]);
-        map.fitBounds(bounds, {padding: [50, 50]});
+                    // Mostrar distancia
+                    var distanceKm = (route.distance / 1000).toFixed(2);
+                    document.getElementById('distanceText').textContent = distanceKm + " km";
+                    document.getElementById('infoBox').style.display = 'block';
 
-        console.log("📏 Distancia calculada:", text);
+                    // Ajustar vista
+                    var bounds = routeLine.getBounds();
+                    map.fitBounds(bounds, { padding: [50, 50] });
+
+                    console.log("📏 Ruta calculada correctamente:", distanceKm, "km");
+                } else {
+                    console.warn("⚠️ No se encontró ruta OSRM");
+                }
+            })
+            .catch(err => {
+                console.error("❌ Error al obtener ruta OSRM:", err);
+            });
     }
 
     /**
