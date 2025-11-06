@@ -23,6 +23,7 @@ fun MainScreen(
     val currentLocation = mainViewModel.currentLocation
     val hasLocationPermission = mainViewModel.hasLocationPermission
     val isTransmitting = mainViewModel.isTransmitting
+    val pendingDestination = mainViewModel.pendingDestination
 
     Column(
         modifier = Modifier
@@ -46,6 +47,52 @@ fun MainScreen(
             }
         }
 
+        // Show destination info if available
+        if (pendingDestination != null) {
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 8.dp),
+                shape = RoundedCornerShape(8.dp),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFFDCFCE7))
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(12.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Column {
+                        Text(
+                            "🎯 Destino Asignado",
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFF166534)
+                        )
+                        Text(
+                            "Lat: ${String.format("%.6f", pendingDestination.latitude)}",
+                            fontSize = 12.sp,
+                            color = Color(0xFF166534)
+                        )
+                        Text(
+                            "Lon: ${String.format("%.6f", pendingDestination.longitude)}",
+                            fontSize = 12.sp,
+                            color = Color(0xFF166534)
+                        )
+                        Text(
+                            pendingDestination.timestamp,
+                            fontSize = 11.sp,
+                            color = Color(0xFF166534)
+                        )
+                    }
+                    TextButton(
+                        onClick = { mainViewModel.clearDestination() }
+                    ) {
+                        Text("✖ Limpiar")
+                    }
+                }
+            }
+        }
 
         Row(
             modifier = Modifier
@@ -85,6 +132,8 @@ fun MainScreen(
                 )
                 LeafletMapWebView(
                     currentLocation = currentLocation,
+                    pendingDestination = pendingDestination,
+                    onDestinationCleared = { mainViewModel.clearDestination() },
                     modifier = Modifier.fillMaxSize()
                 )
             }

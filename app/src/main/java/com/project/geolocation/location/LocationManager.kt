@@ -4,9 +4,7 @@ import android.content.Context
 import android.location.Location
 import android.os.Looper
 import android.widget.Toast
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.setValue
+// REMOVED Compose imports - this class should not know about Compose state
 import com.google.android.gms.location.*
 
 class LocationManager(private val context: Context) {
@@ -14,12 +12,30 @@ class LocationManager(private val context: Context) {
     private val fusedLocationClient: FusedLocationProviderClient =
         LocationServices.getFusedLocationProviderClient(context)
 
-    var currentLocation by mutableStateOf<Location?>(null)
-        private set
+    // ▼▼▼▼▼ FIX 1: REMOVED REDUNDANT COMPOSET STATE ▼▼▼▼▼
+    // The ViewModel will be responsible for holding state.
+    // var currentLocation by mutableStateOf<Location?>(null)
+    //    private set
+    // ▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲
 
-    private val locationCallback = object : LocationCallback() {
+    // ▼▼▼▼▼ FIX 2: ADDED THE PUBLIC CALLBACK THE VIEWMODEL NEEDS ▼▼▼▼▼
+    /**
+     * This is the public callback that MainViewModel will set.
+     * It must be a 'var' and must not be 'private'.
+     */
+    var locationCallback: ((Location) -> Unit)? = null
+    // ▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲
+
+    // ▼▼▼▼▼ FIX 3: RENAMED YOUR INTERNAL CALLBACK ▼▼▼▼▼
+    private val internalLocationCallback = object : LocationCallback() {
         override fun onLocationResult(result: LocationResult) {
-            currentLocation = result.lastLocation
+            // ▼▼▼▼▼ FIX 4: CALL THE PUBLIC CALLBACK ▼▼▼▼▼
+            // When Google Play Services gives us a location,
+            // pass it to whoever is listening (our ViewModel).
+            result.lastLocation?.let {
+                locationCallback?.invoke(it)
+            }
+            // ▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲
         }
     }
 
@@ -29,9 +45,10 @@ class LocationManager(private val context: Context) {
         ).build()
 
         try {
+            // Use the internal callback for the fused client
             fusedLocationClient.requestLocationUpdates(
                 locationRequest,
-                locationCallback,
+                internalLocationCallback,
                 Looper.getMainLooper()
             )
         } catch (e: SecurityException) {
@@ -40,7 +57,8 @@ class LocationManager(private val context: Context) {
     }
 
     fun stopLocationUpdates() {
-        fusedLocationClient.removeLocationUpdates(locationCallback)
+        // Use the internal callback to stop updates
+        fusedLocationClient.removeLocationUpdates(internalLocationCallback)
     }
 
     // Function to get location without cache
@@ -54,9 +72,11 @@ class LocationManager(private val context: Context) {
 
         val freshLocationCallback = object : LocationCallback() {
             override fun onLocationResult(result: LocationResult) {
+                // ▼▼▼▼▼ THIS LINE IS NOW FIXED (REMOVED THE '_') ▼▼▼▼▼
                 val freshLocation = result.lastLocation
                 if (freshLocation != null) {
-                    currentLocation = freshLocation  // Update location
+                    // Also update the main listener
+                    locationCallback?.invoke(freshLocation)
                 }
                 callback(freshLocation)
 

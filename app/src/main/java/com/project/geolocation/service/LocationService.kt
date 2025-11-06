@@ -30,7 +30,9 @@ import kotlinx.coroutines.launch
 class LocationService : Service() {
 
     private lateinit var fusedLocationClient: FusedLocationProviderClient
+    // ▼▼▼ THIS IS THE FIX (added 'private lateinit') ▼▼▼
     private lateinit var locationCallback: LocationCallback
+    // ▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲
     private lateinit var networkManager: NetworkManager
     private lateinit var localAuthManager: LocalAuthManager
 
@@ -52,7 +54,7 @@ class LocationService : Service() {
 
         fusedLocationClient = LocationServices.getFusedLocationProviderClient(this)
         localAuthManager = LocalAuthManager(applicationContext)
-        
+
         // Initialize NetworkManager with lambda to get current user cedula
         networkManager = NetworkManager(this) {
             localAuthManager.getLoggedUserCedula()

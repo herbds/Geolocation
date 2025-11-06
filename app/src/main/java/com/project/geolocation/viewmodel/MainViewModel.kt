@@ -8,10 +8,10 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.project.geolocation.location.LocationManager
 import com.project.geolocation.network.NetworkManager
+import com.project.geolocation.network.PendingDestination
 import com.project.geolocation.permissions.PermissionManager
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
 class MainViewModel(
@@ -20,69 +20,118 @@ class MainViewModel(
     private val permissionManager: PermissionManager
 ) : ViewModel() {
 
-    var isTransmitting by mutableStateOf(false)
-        private set
     var currentLocation by mutableStateOf<Location?>(null)
         private set
-    val hasLocationPermission: Boolean
-        get() = permissionManager.hasLocationPermission
 
-    private var transmissionJob: Job? = null
+    var hasLocationPermission by mutableStateOf(false)
+        private set
+
+    var isTransmitting by mutableStateOf(false)
+        private set
+
+    var pendingDestination by mutableStateOf<PendingDestination?>(null)
+        private set
+
+    private var destinationPollingJob: Job? = null
+
+    companion object {
+        private const val DESTINATION_POLL_INTERVAL = 10000L // 10 seconds
+    }
 
     init {
-        viewModelScope.launch {
-            locationManager.startLocationUpdates()
-            viewModelScope.launch {
-                while(isActive) {
-                    currentLocation = locationManager.currentLocation
-                    delay(1000)
+        hasLocationPermission = permissionManager.hasLocationPermission
+
+        // ▼▼▼ THIS LINE IS NOW CORRECT ▼▼▼
+        // It will set the public 'var locationCallback'
+        // that you just added to LocationManager.kt
+        locationManager.locationCallback = { location ->
+            currentLocation = location
+
+            if (isTransmitting) {
+                viewModelScope.launch {
+                    try {
+                        networkManager.broadcastLocationUdp(location)
+                    } catch (e: Exception) {
+                        android.util.Log.e("MainViewModel", "Error broadcasting location", e)
+                    }
                 }
             }
         }
+
+        // Start destination polling automatically
+        startDestinationPolling()
     }
 
     fun startTransmission() {
         if (!hasLocationPermission) {
-            permissionManager.requestLocationPermission()
+            android.util.Log.w("MainViewModel", "No location permission")
             return
         }
-        if (isTransmitting) return
 
         isTransmitting = true
-
         locationManager.startLocationUpdates()
+        android.util.Log.d("MainViewModel", "📡 Transmission started")
+    }
 
-        transmissionJob = viewModelScope.launch {
-            while (isActive) {
-                locationManager.requestFreshLocation { freshLocation ->
-                    val locationToSend = freshLocation ?: locationManager.currentLocation
-                    
-                    if (locationToSend != null) {
-                        viewModelScope.launch {
-                            networkManager.broadcastLocationUdp(locationToSend)
-                        }
+    fun stopTransmission() {
+        isTransmitting = false
+        locationManager.stopLocationUpdates()
+        android.util.Log.d("MainViewModel", "🛑 Transmission stopped")
+    }
+
+    /**
+     * Start polling for pending destinations
+     */
+    fun startDestinationPolling() {
+        if (destinationPollingJob?.isActive == true) {
+            android.util.Log.d("MainViewModel", "🎯 Destination polling already active")
+            return
+        }
+
+        destinationPollingJob = viewModelScope.launch {
+            android.util.Log.d("MainViewModel", "🎯 Starting destination polling (every ${DESTINATION_POLL_INTERVAL/1000}s)")
+
+            while (true) {
+                try {
+                    val destination = networkManager.fetchPendingDestination()
+
+                    // Only update if it's a new destination (different coordinates or timestamp)
+                    if (destination != null && destination != pendingDestination) {
+                        pendingDestination = destination
+                        android.util.Log.d("MainViewModel", "🎯 New destination received: ${destination.latitude}, ${destination.longitude}")
+                    } else if (destination == null && pendingDestination != null) {
+                        android.util.Log.d("MainViewModel", "🎯 No more pending destinations")
+                        pendingDestination = null
                     }
+                } catch (e: Exception) {
+                    android.util.Log.e("MainViewModel", "🎯 Error polling destinations: ${e.message}", e)
                 }
-                delay(10000L)
+
+                delay(DESTINATION_POLL_INTERVAL)
             }
         }
     }
 
-    fun stopTransmission() {
-        if (!isTransmitting) return
-        isTransmitting = false
-
-        transmissionJob?.cancel()
-        transmissionJob = null
+    /**
+     * Stop polling for destinations
+     */
+    fun stopDestinationPolling() {
+        destinationPollingJob?.cancel()
+        destinationPollingJob = null
+        android.util.Log.d("MainViewModel", "🎯 Destination polling stopped")
     }
 
-    fun requestLocationPermission() {
-        permissionManager.requestLocationPermission()
+    /**
+     * Clear current destination
+     */
+    fun clearDestination() {
+        pendingDestination = null
+        android.util.Log.d("MainViewModel", "🧹 Destination cleared")
     }
 
     override fun onCleared() {
         super.onCleared()
-        locationManager.stopLocationUpdates()
-        transmissionJob?.cancel()
+        stopTransmission()
+        stopDestinationPolling()
     }
 }

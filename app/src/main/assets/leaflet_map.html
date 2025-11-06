@@ -129,26 +129,10 @@
     }
 
     /**
-     * Evento de click en el mapa para seleccionar destino
-     */
-    map.on('click', function(e) {
-        console.log("🎯 Click en mapa:", e.latlng);
-        setDestination(e.latlng.lat, e.latlng.lng);
-
-        // Evita romper el mapa si la interfaz Android no existe aún
-        try {
-            if (window.Android && typeof Android.onDestinationSelected === "function") {
-                Android.onDestinationSelected(e.latlng.lat, e.latlng.lng);
-            }
-        } catch (err) {
-            console.error("⚠️ Error enviando destino a Android:", err);
-        }
-    });
-
-    /**
-     * Establecer destino
+     * Establecer destino (llamado desde Android)
      */
     function setDestination(lat, lon) {
+        console.log("🎯 setDestination:", lat, lon);
         var destLatLng = L.latLng(lat, lon);
         destinationLocation = destLatLng;
 
@@ -159,14 +143,20 @@
                 .bindPopup("🎯 Destino");
         }
 
+        // Mostrar botón de limpiar
+        document.getElementById('clearBtn').style.display = 'block';
+
+        // Si hay ubicación actual, dibujar ruta
+        if (currentLocation) {
+            updateRouteLine();
+        }
+
+        return "OK";
     }
 
     /**
-     * Dibujar línea y calcular distancia
+     * Dibujar ruta por calles usando OSRM
      */
-    /**
- * Dibujar ruta por calles usando OSRM
- */
     function updateRouteLine() {
         if (!currentLocation || !destinationLocation) return;
 
@@ -230,6 +220,7 @@
 
         console.log("🧹 Destino limpiado");
 
+        // Notificar a Android
         try {
             if (window.Android && typeof Android.onDestinationCleared === "function") {
                 Android.onDestinationCleared();
@@ -237,6 +228,8 @@
         } catch (err) {
             console.error("⚠️ Error notificando limpieza:", err);
         }
+
+        return "OK";
     }
 
     console.log("✅ Script cargado y listo");
