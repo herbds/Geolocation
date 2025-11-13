@@ -23,6 +23,7 @@ fun LeafletMapWebView(
     currentLocation: Location?,
     pendingDestination: PendingDestination? = null,
     onDestinationCleared: () -> Unit = {},
+    onRouteStatusChanged: (isOffRoute: Boolean, distance: Double) -> Unit = { _, _ -> }, // ✅ NUEVO
     modifier: Modifier = Modifier
 ) {
     val isPageLoaded = remember { mutableStateOf(false) }
@@ -36,7 +37,7 @@ fun LeafletMapWebView(
                 val lon = pendingDestination.longitude
                 val jsCode = "javascript:setDestination($lat, $lon)"
                 Log.d("WebViewMap", "🎯 Setting destination: $jsCode")
-                
+
                 webView.post {
                     webView.evaluateJavascript(jsCode) { result ->
                         Log.d("WebViewMap", "🎯 Destination set result: $result")
@@ -44,11 +45,10 @@ fun LeafletMapWebView(
                 }
             }
         } else if (isPageLoaded.value && pendingDestination == null) {
-            // Clear destination if it becomes null
             webViewState.value?.let { webView ->
                 val jsCode = "javascript:clearDestination()"
                 Log.d("WebViewMap", "🧹 Clearing destination")
-                
+
                 webView.post {
                     webView.evaluateJavascript(jsCode) { result ->
                         Log.d("WebViewMap", "🧹 Destination cleared result: $result")
@@ -67,7 +67,6 @@ fun LeafletMapWebView(
                     ViewGroup.LayoutParams.MATCH_PARENT
                 )
 
-                // Configuración del WebView
                 setBackgroundColor(Color.TRANSPARENT)
 
                 settings.apply {
@@ -85,16 +84,23 @@ fun LeafletMapWebView(
                     cacheMode = android.webkit.WebSettings.LOAD_DEFAULT
                 }
 
-                // Add JavaScript Interface for callbacks from web
+                // ✅ ACTUALIZADO: JavaScript Interface con detección de ruta
                 addJavascriptInterface(object {
                     @JavascriptInterface
                     fun onDestinationCleared() {
                         Log.d("WebViewMap", "🧹 Destination cleared from web")
                         onDestinationCleared()
                     }
+
+                    // ✅ NUEVO: Callback para estado de ruta
+                    @JavascriptInterface
+                    fun onRouteStatusChanged(status: String, distance: Double) {
+                        Log.d("WebViewMap", "🛣️ Route status: $status (${distance.toInt()}m)")
+                        val isOffRoute = status == "off_route"
+                        onRouteStatusChanged(isOffRoute, distance)
+                    }
                 }, "Android")
 
-                // WebViewClient
                 webViewClient = object : WebViewClient() {
                     override fun onPageFinished(view: WebView?, url: String?) {
                         super.onPageFinished(view, url)
@@ -107,13 +113,11 @@ fun LeafletMapWebView(
                             val jsCode = "javascript:updateLocation($lat, $lon)"
                             Log.d("WebViewMap", "📍 Ejecutando: $jsCode")
 
-                            // Esperar un poco para que Leaflet se inicialice
                             postDelayed({
                                 evaluateJavascript(jsCode) { result ->
                                     Log.d("WebViewMap", "✓ Resultado: $result")
                                 }
 
-                                // Set destination if available
                                 pendingDestination?.let { dest ->
                                     val destCode = "javascript:setDestination(${dest.latitude}, ${dest.longitude})"
                                     Log.d("WebViewMap", "🎯 Setting initial destination: $destCode")
@@ -126,7 +130,6 @@ fun LeafletMapWebView(
                     }
                 }
 
-                // WebChromeClient para ver errores
                 webChromeClient = object : WebChromeClient() {
                     override fun onConsoleMessage(message: android.webkit.ConsoleMessage): Boolean {
                         Log.d("WebViewConsole", "${message.message()} -- línea ${message.lineNumber()}")
