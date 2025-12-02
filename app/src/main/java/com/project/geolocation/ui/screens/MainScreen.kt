@@ -9,9 +9,11 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext // ✅ Import necesario
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.project.geolocation.security.LocalAuthManager // ✅ Import necesario
 import com.project.geolocation.viewmodel.MainViewModel
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -31,6 +33,21 @@ fun MainScreen(
     var isOffRoute by remember { mutableStateOf(false) }
     var offRouteDistance by remember { mutableStateOf(0.0) }
 
+    // ✅ NUEVO: Lógica para obtener el nombre del usuario localmente
+    val context = LocalContext.current
+    var userName by remember { mutableStateOf("") }
+
+    LaunchedEffect(Unit) {
+        val authManager = LocalAuthManager(context)
+        val loggedCedula = authManager.getLoggedUserCedula()
+        if (loggedCedula != null) {
+            val userData = authManager.getUserData(loggedCedula)
+            // Obtenemos el nombre. Usamos split para tomar solo el primer nombre si deseas, 
+            // o quita el .split... para usar el nombre completo.
+            userName = userData?.nombreCompleto?.split(" ")?.firstOrNull() ?: ""
+        }
+    }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -43,13 +60,23 @@ fun MainScreen(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text(
-                text = "Sistema de Geolocalización",
-                fontSize = 20.sp,
-                fontWeight = FontWeight.Bold,
-                color = Color(0xFF4C1D95),
-                modifier = Modifier.padding(bottom = 8.dp)
-            )
+            Column {
+                // ✅ CAMBIO REALIZADO AQUÍ: Saludo personalizado
+                Text(
+                    text = if (userName.isNotEmpty()) "Hola $userName" else "Bienvenido",
+                    fontSize = 20.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color(0xFF4C1D95)
+                )
+                // Subtítulo opcional para mantener el contexto de la app
+                Text(
+                    text = "Sistema de Arrastre",
+                    fontSize = 12.sp,
+                    color = Color(0xFF4C1D95).copy(alpha = 0.7f),
+                    modifier = Modifier.padding(bottom = 8.dp)
+                )
+            }
+
             TextButton(onClick = onLogout) {
                 Text("Salir", color = Color(0xFFEF4444))
             }
@@ -122,8 +149,6 @@ fun MainScreen(
                                 fontWeight = FontWeight.Bold,
                                 color = Color(0xFF166534)
                             )
-
-                            // ✅ NUEVO: Badge de estado de ruta
                         }
                         Spacer(modifier = Modifier.height(4.dp))
                         Text(
@@ -196,17 +221,18 @@ fun MainScreen(
                         fontWeight = FontWeight.Bold
                     )
 
-                    // ✅ NUEVO: Indicador visual en el mapa
+                    // Indicador visual en el mapa
                     if (pendingDestination != null) {
                         Surface(
                             color = if (isOffRoute) Color(0xFFEF4444) else Color(0xFF22C55E),
-                            shape = RoundedCornerShape(12.dp)
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier.size(12.dp) // Añadido size para que se vea
                         ) {
                         }
                     }
                 }
 
-                // ✅ ACTUALIZADO: WebView con callback de estado de ruta
+                // WebView con callback de estado de ruta
                 LeafletMapWebView(
                     currentLocation = currentLocation,
                     pendingDestination = pendingDestination,
@@ -246,8 +272,6 @@ fun MainScreen(
                     SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date(it))
                 } ?: "---"
                 Text("Hora: $time", fontSize = 13.sp)
-
-
             }
         }
     }
