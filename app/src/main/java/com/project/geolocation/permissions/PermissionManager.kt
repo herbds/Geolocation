@@ -1,7 +1,9 @@
 package com.project.geolocation.permissions
 
 import android.Manifest
+import android.content.Context
 import android.content.pm.PackageManager
+import android.os.Build
 import androidx.activity.ComponentActivity
 import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.contract.ActivityResultContracts
@@ -15,24 +17,41 @@ class PermissionManager(
     var hasLocationPermission by mutableStateOf(false)
         private set
 
-    // Launcher for location permissions
-    private val locationPermissionLauncher: ActivityResultLauncher<Array<String>> =
-        activity.registerForActivityResult(
-            ActivityResultContracts.RequestMultiplePermissions()
-        ) { permissions ->
-            val fineLocation = permissions[Manifest.permission.ACCESS_FINE_LOCATION] ?: false
-            val coarseLocation = permissions[Manifest.permission.ACCESS_COARSE_LOCATION] ?: false
+    var hasBackgroundPermission by mutableStateOf(false)
+        private set
 
-            hasLocationPermission = fineLocation || coarseLocation
-            onLocationPermissionResult(hasLocationPermission)
-        }
+    // 1. Launcher para ubicación normal (Fine/Coarse)
+    private val locationPermissionLauncher = activity.registerForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { permissions ->
+        val fineLocation = permissions[Manifest.permission.ACCESS_FINE_LOCATION] ?: false
+        val coarseLocation = permissions[Manifest.permission.ACCESS_COARSE_LOCATION] ?: false
 
+        hasLocationPermission = fineLocation || coarseLocation
+
+        // Si aceptó lo normal, procedemos a avisar a la Activity
+        onLocationPermissionResult(hasLocationPermission)
+    }
+
+    // 2. Launcher para ubicación en segundo plano (Background)
+    private val backgroundPermissionLauncher = activity.registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        hasBackgroundPermission = isGranted
+    }
 
     fun checkPermissions() {
-        hasLocationPermission = (
-                ContextCompat.checkSelfPermission(activity, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED ||
-                        ContextCompat.checkSelfPermission(activity, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
-                )
+        val fine = ContextCompat.checkSelfPermission(activity, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
+        val coarse = ContextCompat.checkSelfPermission(activity, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
+        hasLocationPermission = fine || coarse
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            hasBackgroundPermission = ContextCompat.checkSelfPermission(
+                activity, Manifest.permission.ACCESS_BACKGROUND_LOCATION
+            ) == PackageManager.PERMISSION_GRANTED
+        } else {
+            hasBackgroundPermission = hasLocationPermission
+        }
     }
 
     fun requestLocationPermission() {
@@ -42,5 +61,13 @@ class PermissionManager(
                 Manifest.permission.ACCESS_COARSE_LOCATION
             )
         )
+    }
+
+    fun requestBackgroundLocationPermission() {
+        // En Android 11+ (API 30), el usuario DEBE ser enviado a los ajustes.
+        // El sistema mostrará un diálogo que lo lleva allá automáticamente.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            backgroundPermissionLauncher.launch(Manifest.permission.ACCESS_BACKGROUND_LOCATION)
+        }
     }
 }

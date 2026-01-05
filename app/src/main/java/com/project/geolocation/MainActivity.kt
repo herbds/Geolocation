@@ -8,8 +8,12 @@ import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
 import com.project.geolocation.location.LocationManager
 import com.project.geolocation.network.NetworkManager
 import com.project.geolocation.permissions.PermissionManager
@@ -20,7 +24,8 @@ import com.project.geolocation.ui.theme.GeolocationTheme
 import com.project.geolocation.viewmodel.AuthViewModel
 import com.project.geolocation.viewmodel.AuthViewModelFactory
 import com.project.geolocation.viewmodel.MainViewModel
-import com.project.geolocation.viewmodel.MainViewModelFactory 
+import com.project.geolocation.viewmodel.MainViewModelFactory
+import kotlinx.coroutines.launch // 🔴 Importante para el scope
 
 class MainActivity : ComponentActivity() {
     private lateinit var permissionManager: PermissionManager
@@ -30,6 +35,7 @@ class MainActivity : ComponentActivity() {
     private lateinit var authViewModel: AuthViewModel
     private lateinit var mainViewModel: MainViewModel
 
+    // ... (Launchers de permisos se mantienen igual) ...
     private val notificationPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { isGranted ->
@@ -54,16 +60,31 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
 
         initializeManagers()
-
+        checkAndRequestPermissions()
+        // 1. Pedir permisos iniciales
         permissionManager.checkPermissions()
         requestNotificationPermission()
-        requestBackgroundLocationPermission()
 
+        // 2. Configurar ViewModels
         val authFactory = AuthViewModelFactory(localAuthManager)
         authViewModel = ViewModelProvider(this, authFactory)[AuthViewModel::class.java]
 
         val mainFactory = MainViewModelFactory(locationManager, networkManager, permissionManager)
         mainViewModel = ViewModelProvider(this, mainFactory)[MainViewModel::class.java]
+
+        // 🔴 3. CONEXIÓN VITAL: Escuchar al ViewModel para lanzar el Servicio
+        lifecycleScope.launch {
+            // repeatOnLifecycle hace que el colector se detenga si la app se destruye
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                mainViewModel.isServiceRunning.collect { shouldRun ->
+                    if (shouldRun) {
+                        startLocationService()
+                    } else {
+                        stopLocationService()
+                    }
+                }
+            }
+        }
 
         setContent {
             GeolocationTheme {
@@ -75,16 +96,24 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    // ... (initializeManagers y requestNotificationPermission se mantienen igual) ...
+
+    private fun checkAndRequestPermissions() {
+        permissionManager.checkPermissions()
+
+        if (!permissionManager.hasLocationPermission) {
+            // Primero pedimos la ubicación normal
+            permissionManager.requestLocationPermission()
+        } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && !permissionManager.hasBackgroundPermission) {
+            // Si ya tenemos la normal pero falta la de fondo, pedimos la de fondo
+            permissionManager.requestBackgroundLocationPermission()
+        }
+    }
     private fun initializeManagers() {
-        // Initialize LocalAuthManager for local authentication
         localAuthManager = LocalAuthManager(applicationContext)
-        
-        // Initialize NetworkManager with lambda to get current user cedula
         networkManager = NetworkManager(applicationContext) {
-            // Provides current logged user cedula (ID number) for UDP messages
             localAuthManager.getLoggedUserCedula()
         }
-        
         locationManager = LocationManager(this)
 
         permissionManager = PermissionManager(
@@ -99,7 +128,7 @@ class MainActivity : ComponentActivity() {
             }
         )
     }
-        
+
     private fun requestNotificationPermission() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)

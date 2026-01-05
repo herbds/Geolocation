@@ -47,8 +47,6 @@ class NetworkManager(
         }
 
         val time = SimpleDateFormat("dd/MM/yyyy HH:mm:ss", Locale.getDefault()).format(Date(location.time))
-        
-        // Format: latitude, longitude, timestamp, user_id
         val message = "Lat: ${location.latitude}, Lon: ${location.longitude}, Time: $time, UserID: $userId"
 
         Log.d(TAG, "📡 Broadcasting location with user_id: $userId")
@@ -56,6 +54,65 @@ class NetworkManager(
         workspaces.forEach { workspace ->
             sendViaUDP(workspace.domain, workspace.udpPort, message, workspace.name)
         }
+    }
+
+    /**
+     * ✅ NUEVA: Función para enviar alerta de desviación de ruta
+     */
+    suspend fun sendOffRouteAlert(
+        location: Location,
+        isOffRoute: Boolean,
+        distance: Double
+    ) {
+        val userId = getUserId()
+        if (userId == null) {
+            Log.e(TAG, "⚠️ Error: No user ID available. Cannot send route alert.")
+            return
+        }
+
+        val time = SimpleDateFormat("dd/MM/yyyy HH:mm:ss", Locale.getDefault()).format(Date(location.time))
+
+        // Construir mensaje de alerta
+        val message = buildOffRouteMessage(
+            deviceId = userId,
+            deviceName = android.os.Build.MODEL ?: "Unknown",
+            latitude = location.latitude,
+            longitude = location.longitude,
+            time = time,
+            isOffRoute = isOffRoute,
+            distance = distance
+        )
+
+        Log.d(TAG, "🚨 Sending off-route alert: ${if (isOffRoute) "OFF_ROUTE" else "ON_ROUTE"} (${distance.toInt()}m)")
+
+        // Enviar por UDP a todos los workspaces
+        workspaces.forEach { workspace ->
+            sendViaUDP(workspace.domain, workspace.udpPort, message, workspace.name)
+        }
+    }
+
+    /**
+     * ✅ NUEVA: Construir mensaje de alerta de ruta
+     */
+    private fun buildOffRouteMessage(
+        deviceId: String,
+        deviceName: String,
+        latitude: Double,
+        longitude: Double,
+        time: String,
+        isOffRoute: Boolean,
+        distance: Double
+    ): String {
+        return """
+            |TYPE: ROUTE_ALERT
+            |DeviceID: $deviceId
+            |DeviceName: $deviceName
+            |Status: ${if (isOffRoute) "OFF_ROUTE" else "ON_ROUTE"}
+            |Distance: ${distance.toInt()}m
+            |Lat: $latitude
+            |Lon: $longitude
+            |Time: $time
+        """.trimMargin()
     }
 
     /**
@@ -71,29 +128,21 @@ class NetworkManager(
         Log.d(TAG, "🎯 Fetching destinations for user: $userId from ${workspaces.size} workspaces")
 
         try {
-            // Launch parallel requests to all workspaces
             val allDestinations = workspaces.map { workspace ->
-                async {
-                    fetchDestinationFromWorkspace(workspace, userId)
-                }
-            }.awaitAll().flatten() // Flatten list of lists
+                async { fetchDestinationFromWorkspace(workspace, userId) }
+            }.awaitAll().flatten()
 
             if (allDestinations.isEmpty()) {
                 Log.d(TAG, "🎯 No destinations found in any workspace")
                 return@withContext null
             }
 
-            // Filter only pending destinations
             val pendingDestinations = allDestinations.filter { it.status == "pending" }
-
             if (pendingDestinations.isEmpty()) {
                 Log.d(TAG, "🎯 No pending destinations found")
                 return@withContext null
             }
 
-            Log.d(TAG, "🎯 Found ${pendingDestinations.size} pending destinations")
-
-            // Find the most recent one by parsing the created_at timestamp
             val dateFormat = SimpleDateFormat("dd/MM/yyyy HH:mm:ss", Locale.getDefault())
             val mostRecent = pendingDestinations.maxByOrNull { destination ->
                 try {
@@ -121,9 +170,6 @@ class NetworkManager(
         }
     }
 
-    /**
-     * Fetches destinations from a single workspace
-     */
     private suspend fun fetchDestinationFromWorkspace(
         workspace: Workspace,
         userId: String
@@ -133,7 +179,6 @@ class NetworkManager(
             Log.d(TAG, "🌐 Fetching from ${workspace.name}: $url")
 
             val response: HttpResponse = ApiClient.client.get(url)
-            
             if (response.status.value == 200) {
                 val destinationResponse: DestinationResponse = response.body()
                 Log.d(TAG, "✅ ${workspace.name}: Found ${destinationResponse.count} destinations")

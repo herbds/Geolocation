@@ -1,38 +1,28 @@
 package com.project.geolocation.service
 
 import android.Manifest
-import android.app.NotificationChannel
-import android.app.NotificationManager
-import android.app.PendingIntent
-import android.app.Service
+import android.app.*
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.location.Location
 import android.net.wifi.WifiManager
-import android.os.Build
-import android.os.IBinder
-import android.os.Looper
-import android.os.PowerManager
+import android.os.*
 import android.util.Log
 import androidx.core.app.ActivityCompat
 import androidx.core.app.NotificationCompat
+import androidx.core.content.ContextCompat
 import com.google.android.gms.location.*
+import com.google.android.gms.location.LocationCallback
 import com.project.geolocation.MainActivity
 import com.project.geolocation.network.NetworkManager
 import com.project.geolocation.security.LocalAuthManager
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.cancel
-import kotlinx.coroutines.launch
+import kotlinx.coroutines.*
 
 class LocationService : Service() {
 
     private lateinit var fusedLocationClient: FusedLocationProviderClient
-    // ▼▼▼ THIS IS THE FIX (added 'private lateinit') ▼▼▼
     private lateinit var locationCallback: LocationCallback
-    // ▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲
     private lateinit var networkManager: NetworkManager
     private lateinit var localAuthManager: LocalAuthManager
 
@@ -48,28 +38,32 @@ class LocationService : Service() {
     private var sendSuccessCount = 0
     private var sendErrorCount = 0
 
+    // 🔴 FIX: bandera para evitar iniciar dos veces
+    private var isTracking = false
+
     override fun onCreate() {
         super.onCreate()
-        Log.d("LocationService", "🚀 Service created")
+        createNotificationChannel()
+        try {
+            startForeground(NOTIFICATION_ID, createNotification())
+            Log.d("LocationService", "✅ startForeground llamado con éxito")
+        } catch (e: Exception) {
+            Log.e("LocationService", "❌ Error al iniciar foreground: ${e.message}")
+        }
 
         fusedLocationClient = LocationServices.getFusedLocationProviderClient(this)
         localAuthManager = LocalAuthManager(applicationContext)
 
-        // Initialize NetworkManager with lambda to get current user cedula
         networkManager = NetworkManager(this) {
             localAuthManager.getLoggedUserCedula()
         }
 
         acquireWakeLocks()
 
-        createNotificationChannel()
-
         locationCallback = object : LocationCallback() {
-            override fun onLocationResult(locationResult: LocationResult) {
-                locationResult.lastLocation?.let { location ->
+            override fun onLocationResult(result: LocationResult) {
+                result.lastLocation?.let { location ->
                     locationCount++
-                    Log.d("LocationService", "📍 Location #$locationCount: ${location.latitude}, ${location.longitude}")
-
                     sendLocationToServers(location)
                     updateNotification(location)
                 }
@@ -80,89 +74,98 @@ class LocationService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         Log.d("LocationService", "▶️ Service started")
 
-        val notification = createNotification()
-        startForeground(NOTIFICATION_ID, notification)
-
-        startLocationUpdates()
+        // 🔴 FIX: evitar múltiples requestLocationUpdates
+        if (!isTracking) {
+            startLocationUpdates()
+            isTracking = true
+        }
 
         return START_STICKY
     }
 
-    private fun acquireWakeLocks() {
-        try {
-            val wifiManager = applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
-
-            val wifiLockMode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                WifiManager.WIFI_MODE_FULL_LOW_LATENCY
-            } else {
-                @Suppress("DEPRECATION")
-                WifiManager.WIFI_MODE_FULL_HIGH_PERF
-            }
-
-            wifiLock = wifiManager.createWifiLock(
-                wifiLockMode,
-                "GeolocationService:WifiLock"
-            )
-
-            wifiLock?.acquire()
-            Log.d("LocationService", "✅ WifiLock acquired")
-
-            val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
-            wakeLock = powerManager.newWakeLock(
-                PowerManager.PARTIAL_WAKE_LOCK,
-                "GeolocationService:WakeLock"
-            )
-            wakeLock?.acquire(10 * 60 * 1000L /*10 minutes*/)
-            Log.d("LocationService", "✅ WakeLock acquired")
-
-        } catch (e: Exception) {
-            Log.e("LocationService", "❌ Error acquiring WakeLocks: ${e.message}")
-        }
-    }
-
-    private fun releaseWakeLocks() {
-        try {
-            wifiLock?.let {
-                if (it.isHeld) {
-                    it.release()
-                    Log.d("LocationService", "🔓 WifiLock released")
-                }
-            }
-            wakeLock?.let {
-                if (it.isHeld) {
-                    it.release()
-                    Log.d("LocationService", "🔓 WakeLock released")
-                }
-            }
-        } catch (e: Exception) {
-            Log.e("LocationService", "❌ Error releasing WakeLocks: ${e.message}")
-        }
-    }
+    // =====================================================
+    // 📍 LOCATION
+    // =====================================================
 
     private fun startLocationUpdates() {
-        val locationRequest = LocationRequest.Builder(
-            Priority.PRIORITY_HIGH_ACCURACY,
-            10000L
-        ).apply {
-            setMinUpdateIntervalMillis(5000L)
-            setWaitForAccurateLocation(false)
-        }.build()
 
-        if (ActivityCompat.checkSelfPermission(
+        val request = LocationRequest.Builder(
+            Priority.PRIORITY_HIGH_ACCURACY,
+            10_000L
+        )
+            .setMinUpdateIntervalMillis(5_000L)
+            .setWaitForAccurateLocation(false)
+            .build()
+
+        if (
+            ActivityCompat.checkSelfPermission(
                 this,
                 Manifest.permission.ACCESS_FINE_LOCATION
-            ) == PackageManager.PERMISSION_GRANTED
+            ) != PackageManager.PERMISSION_GRANTED
         ) {
-            fusedLocationClient.requestLocationUpdates(
-                locationRequest,
-                locationCallback,
-                Looper.getMainLooper()
-            )
-            Log.d("LocationService", "✅ Location updates started (every 10s)")
-        } else {
-            Log.e("LocationService", "❌ No location permission")
+            Log.e("LocationService", "❌ Location permission missing")
             stopSelf()
+            return
         }
+
+        fusedLocationClient.requestLocationUpdates(
+            request,
+            locationCallback,
+            Looper.getMainLooper()
+        )
+
+        Log.d("LocationService", "✅ Location updates started correctly")
+    }
+
+
+
+    private fun hasLocationPermissions(): Boolean {
+        val fine = ActivityCompat.checkSelfPermission(
+            this, Manifest.permission.ACCESS_FINE_LOCATION
+        ) == PackageManager.PERMISSION_GRANTED
+
+        val background =
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                ActivityCompat.checkSelfPermission(
+                    this, Manifest.permission.ACCESS_BACKGROUND_LOCATION
+                ) == PackageManager.PERMISSION_GRANTED
+            } else true
+
+        return fine && background
+    }
+
+    // =====================================================
+    // 🔔 NOTIFICATION
+    // =====================================================
+
+    private fun createNotification() =
+        NotificationCompat.Builder(this, CHANNEL_ID)
+            .setContentTitle("🌐 Geolocalización activa")
+            .setContentText("Transmitiendo ubicación en segundo plano")
+            .setSmallIcon(android.R.drawable.ic_menu_mylocation)
+            .setOngoing(true)
+            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .setContentIntent(createPendingIntent())
+            .build()
+
+    private fun updateNotification(location: Location) {
+        val successRate =
+            if (locationCount > 0) (sendSuccessCount * 100 / locationCount) else 0
+
+        val notification =
+            NotificationCompat.Builder(this, CHANNEL_ID)
+                .setContentTitle("📡 Enviando ubicación")
+                .setContentText(
+                    "📍 ${"%.6f".format(location.latitude)}, ${"%.6f".format(location.longitude)}"
+                )
+                .setSmallIcon(android.R.drawable.ic_menu_mylocation)
+                .setOngoing(true)
+                .setPriority(NotificationCompat.PRIORITY_LOW)
+                .setContentIntent(createPendingIntent())
+                .build()
+
+        getSystemService(NotificationManager::class.java)
+            .notify(NOTIFICATION_ID, notification)
     }
 
     private fun createNotificationChannel() {
@@ -171,65 +174,62 @@ class LocationService : Service() {
                 CHANNEL_ID,
                 "Servicio de Ubicación",
                 NotificationManager.IMPORTANCE_LOW
-            ).apply {
-                description = "Seguimiento de ubicación en segundo plano"
-                setShowBadge(false)
-            }
-            val manager = getSystemService(NotificationManager::class.java)
-            manager.createNotificationChannel(channel)
+            )
+            channel.setShowBadge(false)
+            getSystemService(NotificationManager::class.java)
+                .createNotificationChannel(channel)
         }
     }
 
-    private fun createNotification() = NotificationCompat.Builder(this, CHANNEL_ID)
-        .setContentTitle("🌐 Sistema de Geolocalización")
-        .setContentText("Iniciando seguimiento...")
-        .setSmallIcon(android.R.drawable.ic_menu_mylocation)
-        .setPriority(NotificationCompat.PRIORITY_LOW)
-        .setOngoing(true)
-        .setContentIntent(createPendingIntent())
-        .build()
-
-    private fun updateNotification(location: Location) {
-        val successRate = if (locationCount > 0) {
-            (sendSuccessCount.toFloat() / locationCount * 100).toInt()
-        } else 0
-
-        val notification = NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle("📡 Transmitiendo ($successRate% éxito)")
-            .setContentText("📍 ${String.format("%.6f", location.latitude)}, ${String.format("%.6f", location.longitude)} | $locationCount enviadas")
-            .setSmallIcon(android.R.drawable.ic_menu_mylocation)
-            .setPriority(NotificationCompat.PRIORITY_LOW)
-            .setOngoing(true)
-            .setContentIntent(createPendingIntent())
-            .build()
-
-        val manager = getSystemService(NotificationManager::class.java)
-        manager.notify(NOTIFICATION_ID, notification)
-    }
-
-    private fun createPendingIntent(): PendingIntent {
-        val intent = Intent(this, MainActivity::class.java)
-        return PendingIntent.getActivity(
+    private fun createPendingIntent(): PendingIntent =
+        PendingIntent.getActivity(
             this,
             0,
-            intent,
-            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+            Intent(this, MainActivity::class.java),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
-    }
+
+    // =====================================================
+    // 🌐 NETWORK
+    // =====================================================
 
     private fun sendLocationToServers(location: Location) {
-        Log.d("LocationService", "📤 Sending to servers: ${location.latitude}, ${location.longitude}")
-
         serviceScope.launch {
             try {
                 networkManager.broadcastLocationUdp(location)
                 sendSuccessCount++
-                Log.d("LocationService", "✅ Sent successfully (total successful: $sendSuccessCount)")
             } catch (e: Exception) {
                 sendErrorCount++
-                Log.e("LocationService", "❌ Error sending to servers (total errors: $sendErrorCount): ${e.message}", e)
+                Log.e("LocationService", "❌ Network error", e)
             }
         }
+    }
+
+    // =====================================================
+    // 🔋 WAKELOCKS
+    // =====================================================
+
+    private fun acquireWakeLocks() {
+        val wifiManager =
+            applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
+
+        wifiLock = wifiManager.createWifiLock(
+            WifiManager.WIFI_MODE_FULL_LOW_LATENCY,
+            "Geo:WifiLock"
+        )
+        wifiLock?.acquire()
+
+        val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
+        wakeLock = powerManager.newWakeLock(
+            PowerManager.PARTIAL_WAKE_LOCK,
+            "Geo:WakeLock"
+        )
+        wakeLock?.acquire()
+    }
+
+    private fun releaseWakeLocks() {
+        wifiLock?.takeIf { it.isHeld }?.release()
+        wakeLock?.takeIf { it.isHeld }?.release()
     }
 
     override fun onDestroy() {
@@ -237,7 +237,8 @@ class LocationService : Service() {
         fusedLocationClient.removeLocationUpdates(locationCallback)
         releaseWakeLocks()
         serviceScope.cancel()
-        Log.d("LocationService", "🛑 Service stopped. Stats: $locationCount locations, $sendSuccessCount successful, $sendErrorCount errors")
+        isTracking = false
+        Log.d("LocationService", "🛑 Service destroyed")
     }
 
     override fun onBind(intent: Intent?): IBinder? = null

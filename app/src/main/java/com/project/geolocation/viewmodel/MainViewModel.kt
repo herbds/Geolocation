@@ -12,6 +12,8 @@ import com.project.geolocation.network.PendingDestination
 import com.project.geolocation.permissions.PermissionManager
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
 class MainViewModel(
@@ -26,8 +28,13 @@ class MainViewModel(
     var hasLocationPermission by mutableStateOf(false)
         private set
 
+    // 🟢 ESTADO PARA LA UI (Compose)
     var isTransmitting by mutableStateOf(false)
         private set
+
+    // 🟢 ESTADO PARA LA ACTIVITY (Foreground Service)
+    private val _isServiceRunning = MutableStateFlow(false)
+    val isServiceRunning = _isServiceRunning.asStateFlow()
 
     var pendingDestination by mutableStateOf<PendingDestination?>(null)
         private set
@@ -41,9 +48,6 @@ class MainViewModel(
     init {
         hasLocationPermission = permissionManager.hasLocationPermission
 
-        // ▼▼▼ THIS LINE IS NOW CORRECT ▼▼▼
-        // It will set the public 'var locationCallback'
-        // that you just added to LocationManager.kt
         locationManager.locationCallback = { location ->
             currentLocation = location
 
@@ -58,7 +62,6 @@ class MainViewModel(
             }
         }
 
-        // Start destination polling automatically
         startDestinationPolling()
     }
 
@@ -68,65 +71,54 @@ class MainViewModel(
             return
         }
 
+        // 1. Activamos la transmisión local
         isTransmitting = true
+
+        // 2. Avisamos a la MainActivity que debe iniciar el Foreground Service
+        _isServiceRunning.value = true
+
         locationManager.startLocationUpdates()
         android.util.Log.d("MainViewModel", "📡 Transmission started")
     }
 
     fun stopTransmission() {
+        // 1. Apagamos la transmisión local
         isTransmitting = false
+
+        // 2. Avisamos a la MainActivity que debe detener el servicio y la notificación
+        _isServiceRunning.value = false
+
         locationManager.stopLocationUpdates()
         android.util.Log.d("MainViewModel", "🛑 Transmission stopped")
     }
 
-    /**
-     * Start polling for pending destinations
-     */
     fun startDestinationPolling() {
-        if (destinationPollingJob?.isActive == true) {
-            android.util.Log.d("MainViewModel", "🎯 Destination polling already active")
-            return
-        }
+        if (destinationPollingJob?.isActive == true) return
 
         destinationPollingJob = viewModelScope.launch {
-            android.util.Log.d("MainViewModel", "🎯 Starting destination polling (every ${DESTINATION_POLL_INTERVAL/1000}s)")
-
             while (true) {
                 try {
                     val destination = networkManager.fetchPendingDestination()
-
-                    // Only update if it's a new destination (different coordinates or timestamp)
                     if (destination != null && destination != pendingDestination) {
                         pendingDestination = destination
-                        android.util.Log.d("MainViewModel", "🎯 New destination received: ${destination.latitude}, ${destination.longitude}")
                     } else if (destination == null && pendingDestination != null) {
-                        android.util.Log.d("MainViewModel", "🎯 No more pending destinations")
                         pendingDestination = null
                     }
                 } catch (e: Exception) {
-                    android.util.Log.e("MainViewModel", "🎯 Error polling destinations: ${e.message}", e)
+                    android.util.Log.e("MainViewModel", "🎯 Error polling: ${e.message}")
                 }
-
                 delay(DESTINATION_POLL_INTERVAL)
             }
         }
     }
 
-    /**
-     * Stop polling for destinations
-     */
     fun stopDestinationPolling() {
         destinationPollingJob?.cancel()
         destinationPollingJob = null
-        android.util.Log.d("MainViewModel", "🎯 Destination polling stopped")
     }
 
-    /**
-     * Clear current destination
-     */
     fun clearDestination() {
         pendingDestination = null
-        android.util.Log.d("MainViewModel", "🧹 Destination cleared")
     }
 
     override fun onCleared() {
