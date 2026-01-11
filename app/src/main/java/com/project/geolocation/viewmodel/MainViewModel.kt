@@ -43,14 +43,16 @@ class MainViewModel(
 
     companion object {
         private const val DESTINATION_POLL_INTERVAL = 10000L // 10 seconds
+        private const val ARRIVAL_THRESHOLD_METERS = 50.0 // 🔴 Radio de llegada (50 metros)
     }
+
 
     init {
         hasLocationPermission = permissionManager.hasLocationPermission
 
         locationManager.locationCallback = { location ->
             currentLocation = location
-
+            checkArrival(location)
             if (isTransmitting) {
                 viewModelScope.launch {
                     try {
@@ -80,7 +82,28 @@ class MainViewModel(
         locationManager.startLocationUpdates()
         android.util.Log.d("MainViewModel", "📡 Transmission started")
     }
+    // 🔴 Función para calcular distancia y completar viaje
+    private fun checkArrival(location: Location) {
+        val destination = pendingDestination ?: return
 
+        // Creamos un objeto Location para el destino para usar distanceTo
+        val destLoc = Location("service").apply {
+            latitude = destination.latitude
+            longitude = destination.longitude
+        }
+
+        val distanceInMeters = location.distanceTo(destLoc)
+
+        if (distanceInMeters <= ARRIVAL_THRESHOLD_METERS) {
+            android.util.Log.d("MainViewModel", "🏁 ¡Destino alcanzado! Distancia: $distanceInMeters m")
+            completeTrip()
+        }
+    }
+    private fun completeTrip() {
+        // 1. Limpiamos el destino actual
+        clearDestination()
+    }
+    
     fun stopTransmission() {
         // 1. Apagamos la transmisión local
         isTransmitting = false
