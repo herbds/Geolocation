@@ -28,24 +28,26 @@ class MainViewModel(
     var hasLocationPermission by mutableStateOf(false)
         private set
 
-    // 🟢 ESTADO PARA LA UI (Compose)
     var isTransmitting by mutableStateOf(false)
         private set
 
-    // 🟢 ESTADO PARA LA ACTIVITY (Foreground Service)
     private val _isServiceRunning = MutableStateFlow(false)
     val isServiceRunning = _isServiceRunning.asStateFlow()
 
     var pendingDestination by mutableStateOf<PendingDestination?>(null)
         private set
 
+    // Estado para mostrar mensaje de llegada
+    var arrivedAtDestination by mutableStateOf(false)
+        private set
+
     private var destinationPollingJob: Job? = null
 
     companion object {
-        private const val DESTINATION_POLL_INTERVAL = 10000L // 10 seconds
-        private const val ARRIVAL_THRESHOLD_METERS = 50.0 // 🔴 Radio de llegada (50 metros)
+        private const val TAG = "MainViewModel"
+        private const val DESTINATION_POLL_INTERVAL = 10000L
+        private const val ARRIVAL_THRESHOLD_METERS = 50.0
     }
-
 
     init {
         hasLocationPermission = permissionManager.hasLocationPermission
@@ -58,7 +60,7 @@ class MainViewModel(
                     try {
                         networkManager.broadcastLocationUdp(location)
                     } catch (e: Exception) {
-                        android.util.Log.e("MainViewModel", "Error broadcasting location", e)
+                        android.util.Log.e(TAG, "Error broadcasting location", e)
                     }
                 }
             }
@@ -69,25 +71,21 @@ class MainViewModel(
 
     fun startTransmission() {
         if (!hasLocationPermission) {
-            android.util.Log.w("MainViewModel", "No location permission")
+            android.util.Log.w(TAG, "No location permission")
             return
         }
 
-        // 1. Activamos la transmisión local
         isTransmitting = true
-
-        // 2. Avisamos a la MainActivity que debe iniciar el Foreground Service
         _isServiceRunning.value = true
 
         locationManager.startLocationUpdates()
-        android.util.Log.d("MainViewModel", "📡 Transmission started")
+        android.util.Log.d(TAG, "📡 Transmission started")
     }
-    // 🔴 Función para calcular distancia y completar viaje
+
     private fun checkArrival(location: Location) {
         val destination = pendingDestination ?: return
 
-        // Creamos un objeto Location para el destino para usar distanceTo
-        val destLoc = Location("service").apply {
+        val destLoc = Location("destination").apply {
             latitude = destination.latitude
             longitude = destination.longitude
         }
@@ -95,24 +93,44 @@ class MainViewModel(
         val distanceInMeters = location.distanceTo(destLoc)
 
         if (distanceInMeters <= ARRIVAL_THRESHOLD_METERS) {
-            android.util.Log.d("MainViewModel", "🏁 ¡Destino alcanzado! Distancia: $distanceInMeters m")
+            android.util.Log.d(TAG, "🏁 ¡Destino alcanzado! Distancia: $distanceInMeters m")
             completeTrip()
         }
     }
-    private fun completeTrip() {
-        // 1. Limpiamos el destino actual
-        clearDestination()
-    }
-    
-    fun stopTransmission() {
-        // 1. Apagamos la transmisión local
-        isTransmitting = false
 
-        // 2. Avisamos a la MainActivity que debe detener el servicio y la notificación
+    private fun completeTrip() {
+        viewModelScope.launch {
+            try {
+                // 1. Notificar al servidor que llegamos
+                val success = networkManager.completeDestination()
+                
+                if (success) {
+                    android.util.Log.d(TAG, "🏁 Viaje completado exitosamente")
+                    arrivedAtDestination = true
+                    
+                    // Ocultar el mensaje después de 3 segundos
+                    delay(3000)
+                    arrivedAtDestination = false
+                } else {
+                    android.util.Log.w(TAG, "⚠️ No se pudo notificar al servidor")
+                }
+                
+                // 2. Limpiar el destino local
+                clearDestination()
+                
+            } catch (e: Exception) {
+                android.util.Log.e(TAG, "Error completando viaje: ${e.message}")
+                clearDestination()
+            }
+        }
+    }
+
+    fun stopTransmission() {
+        isTransmitting = false
         _isServiceRunning.value = false
 
         locationManager.stopLocationUpdates()
-        android.util.Log.d("MainViewModel", "🛑 Transmission stopped")
+        android.util.Log.d(TAG, "🛑 Transmission stopped")
     }
 
     fun startDestinationPolling() {
@@ -128,7 +146,7 @@ class MainViewModel(
                         pendingDestination = null
                     }
                 } catch (e: Exception) {
-                    android.util.Log.e("MainViewModel", "🎯 Error polling: ${e.message}")
+                    android.util.Log.e(TAG, "🎯 Error polling: ${e.message}")
                 }
                 delay(DESTINATION_POLL_INTERVAL)
             }
@@ -142,6 +160,10 @@ class MainViewModel(
 
     fun clearDestination() {
         pendingDestination = null
+    }
+
+    fun dismissArrivalMessage() {
+        arrivedAtDestination = false
     }
 
     override fun onCleared() {

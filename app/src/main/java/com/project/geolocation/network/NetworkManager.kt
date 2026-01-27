@@ -6,10 +6,10 @@ import android.util.Log
 import io.ktor.client.call.*
 import io.ktor.client.request.*
 import io.ktor.client.statement.*
+import io.ktor.http.*
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.async
-import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.withContext
+import kotlinx.serialization.Serializable
 import java.net.DatagramPacket
 import java.net.DatagramSocket
 import java.net.InetAddress
@@ -19,25 +19,17 @@ import java.util.Locale
 
 class NetworkManager(
     private val context: Context,
-    private val getUserId: () -> String? // Lambda to get current user cedula (ID number)
+    private val getUserId: () -> String?
 ) {
-
-    private data class Workspace(val name: String, val domain: String, val udpPort: Int)
-
-    private val workspaces = listOf(
-        Workspace("Alan", "alan.tumaquinaya.com", 5049),
-        Workspace("Hernando", "hernando.tumaquinaya.com", 5049),
-        Workspace("Sebastian", "sebastian.tumaquinaya.com", 5049),
-        Workspace("Oliver", "oliver.tumaquinaya.com", 5049),
-    )
 
     companion object {
         private const val TAG = "NetworkManager"
+        private const val SERVER_DOMAIN = "sebastian.tumaquinaya.com"
+        private const val UDP_PORT = 5049
     }
 
     /**
-     * Sends location via UDP to all instances.
-     * Format: latitude, longitude, timestamp, user_id (cedula)
+     * Sends location via UDP to Sebastian's server
      */
     suspend fun broadcastLocationUdp(location: Location) {
         val userId = getUserId()
@@ -49,15 +41,12 @@ class NetworkManager(
         val time = SimpleDateFormat("dd/MM/yyyy HH:mm:ss", Locale.getDefault()).format(Date(location.time))
         val message = "Lat: ${location.latitude}, Lon: ${location.longitude}, Time: $time, UserID: $userId"
 
-        Log.d(TAG, "📡 Broadcasting location with user_id: $userId")
-
-        workspaces.forEach { workspace ->
-            sendViaUDP(workspace.domain, workspace.udpPort, message, workspace.name)
-        }
+        Log.d(TAG, "📡 Sending location with user_id: $userId")
+        sendViaUDP(message)
     }
 
     /**
-     * ✅ NUEVA: Función para enviar alerta de desviación de ruta
+     * Envía alerta de desviación de ruta
      */
     suspend fun sendOffRouteAlert(
         location: Location,
@@ -72,7 +61,6 @@ class NetworkManager(
 
         val time = SimpleDateFormat("dd/MM/yyyy HH:mm:ss", Locale.getDefault()).format(Date(location.time))
 
-        // Construir mensaje de alerta
         val message = buildOffRouteMessage(
             deviceId = userId,
             deviceName = android.os.Build.MODEL ?: "Unknown",
@@ -84,16 +72,9 @@ class NetworkManager(
         )
 
         Log.d(TAG, "🚨 Sending off-route alert: ${if (isOffRoute) "OFF_ROUTE" else "ON_ROUTE"} (${distance.toInt()}m)")
-
-        // Enviar por UDP a todos los workspaces
-        workspaces.forEach { workspace ->
-            sendViaUDP(workspace.domain, workspace.udpPort, message, workspace.name)
-        }
+        sendViaUDP(message)
     }
 
-    /**
-     * ✅ NUEVA: Construir mensaje de alerta de ruta
-     */
     private fun buildOffRouteMessage(
         deviceId: String,
         deviceName: String,
@@ -116,7 +97,7 @@ class NetworkManager(
     }
 
     /**
-     * Fetches pending destinations from all workspaces and returns the most recent one
+     * Fetches pending destination from Sebastian's server
      */
     suspend fun fetchPendingDestination(): PendingDestination? = withContext(Dispatchers.IO) {
         val userId = getUserId()
@@ -125,43 +106,42 @@ class NetworkManager(
             return@withContext null
         }
 
-        Log.d(TAG, "🎯 Fetching destinations for user: $userId from ${workspaces.size} workspaces")
+        Log.d(TAG, "🎯 Fetching destinations for user: $userId")
 
         try {
-            val allDestinations = workspaces.map { workspace ->
-                async { fetchDestinationFromWorkspace(workspace, userId) }
-            }.awaitAll().flatten()
+            val url = "https://$SERVER_DOMAIN/database/destination/$userId"
+            Log.d(TAG, "🌐 Fetching from: $url")
 
-            if (allDestinations.isEmpty()) {
-                Log.d(TAG, "🎯 No destinations found in any workspace")
+            val response: HttpResponse = ApiClient.client.get(url)
+            
+            if (response.status.value != 200) {
+                Log.w(TAG, "⚠️ HTTP ${response.status.value}")
                 return@withContext null
             }
 
-            val pendingDestinations = allDestinations.filter { it.status == "pending" }
-            if (pendingDestinations.isEmpty()) {
-                Log.d(TAG, "🎯 No pending destinations found")
-                return@withContext null
-            }
+            val destinationResponse: DestinationResponse = response.body()
+            Log.d(TAG, "✅ Found ${destinationResponse.count} destinations")
 
-            val dateFormat = SimpleDateFormat("dd/MM/yyyy HH:mm:ss", Locale.getDefault())
-            val mostRecent = pendingDestinations.maxByOrNull { destination ->
-                try {
-                    dateFormat.parse(destination.created_at)?.time ?: 0L
-                } catch (e: Exception) {
-                    Log.e(TAG, "Error parsing date: ${destination.created_at}", e)
-                    0L
+            val pendingDestination = destinationResponse.destinations
+                .filter { it.status == "pending" }
+                .maxByOrNull { destination ->
+                    try {
+                        val dateFormat = SimpleDateFormat("dd/MM/yyyy HH:mm:ss", Locale.getDefault())
+                        dateFormat.parse(destination.created_at)?.time ?: 0L
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Error parsing date: ${destination.created_at}", e)
+                        0L
+                    }
                 }
-            }
 
-            mostRecent?.let {
-                val pendingDest = PendingDestination(
+            pendingDestination?.let {
+                Log.d(TAG, "🎯 Pending destination: ${it.latitude}, ${it.longitude}")
+                PendingDestination(
                     latitude = it.latitude,
                     longitude = it.longitude,
                     timestamp = it.created_at,
-                    source = "Multiple workspaces"
+                    source = SERVER_DOMAIN
                 )
-                Log.d(TAG, "🎯 Most recent destination: ${it.latitude}, ${it.longitude} from ${it.created_at}")
-                pendingDest
             }
 
         } catch (e: Exception) {
@@ -170,30 +150,39 @@ class NetworkManager(
         }
     }
 
-    private suspend fun fetchDestinationFromWorkspace(
-        workspace: Workspace,
-        userId: String
-    ): List<Destination> {
-        return try {
-            val url = "https://${workspace.domain}/database/destination/$userId"
-            Log.d(TAG, "🌐 Fetching from ${workspace.name}: $url")
+    /**
+     * Notifica al servidor que el usuario llegó al destino
+     */
+    suspend fun completeDestination(): Boolean = withContext(Dispatchers.IO) {
+        val userId = getUserId()
+        if (userId == null) {
+            Log.e(TAG, "🏁 Error: No user ID available. Cannot complete destination.")
+            return@withContext false
+        }
 
-            val response: HttpResponse = ApiClient.client.get(url)
+        try {
+            val url = "https://$SERVER_DOMAIN/api/destination/complete"
+            Log.d(TAG, "🏁 Completing destination for user: $userId")
+
+            val response: HttpResponse = ApiClient.client.post(url) {
+                contentType(ContentType.Application.Json)
+                setBody(CompleteDestinationRequest(user_id = userId))
+            }
+
             if (response.status.value == 200) {
-                val destinationResponse: DestinationResponse = response.body()
-                Log.d(TAG, "✅ ${workspace.name}: Found ${destinationResponse.count} destinations")
-                destinationResponse.destinations
+                Log.d(TAG, "✅ Destination marked as completed")
+                return@withContext true
             } else {
-                Log.w(TAG, "⚠️ ${workspace.name}: HTTP ${response.status.value}")
-                emptyList()
+                Log.w(TAG, "⚠️ Failed to complete destination: HTTP ${response.status.value}")
+                return@withContext false
             }
         } catch (e: Exception) {
-            Log.e(TAG, "❌ ${workspace.name} error: ${e.message}")
-            emptyList()
+            Log.e(TAG, "❌ Error completing destination: ${e.message}", e)
+            return@withContext false
         }
     }
 
-    private suspend fun sendViaUDP(ipAddress: String, port: Int, message: String, identifier: String) {
+    private suspend fun sendViaUDP(message: String) {
         withContext(Dispatchers.IO) {
             var socket: DatagramSocket? = null
             try {
@@ -201,18 +190,24 @@ class NetworkManager(
                 socket.soTimeout = 3000
 
                 val buffer = message.toByteArray(Charsets.UTF_8)
-                val address = InetAddress.getByName(ipAddress)
-                val packet = DatagramPacket(buffer, buffer.size, address, port)
+                val address = InetAddress.getByName(SERVER_DOMAIN)
+                val packet = DatagramPacket(buffer, buffer.size, address, UDP_PORT)
 
                 socket.send(packet)
                 Log.d(TAG, "Message: ($message)")
-                Log.d(TAG, "✅ UDP sent to $identifier ($ipAddress:$port)")
+                Log.d(TAG, "✅ UDP sent to $SERVER_DOMAIN:$UDP_PORT")
 
             } catch (e: Exception) {
-                Log.e(TAG, "❌ UDP error for $identifier: ${e.message}", e)
+                Log.e(TAG, "❌ UDP error: ${e.message}", e)
             } finally {
                 socket?.close()
             }
         }
     }
 }
+
+// Data class para el request de completar destino
+@Serializable
+data class CompleteDestinationRequest(
+    val user_id: String
+)
