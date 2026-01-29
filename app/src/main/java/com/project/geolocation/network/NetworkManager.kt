@@ -26,6 +26,55 @@ class NetworkManager(
         private const val TAG = "NetworkManager"
         private const val SERVER_DOMAIN = "sebastian.tumaquinaya.com"
         private const val UDP_PORT = 5049
+        private const val AUTH_UDP_PORT = 5050  // ← NUEVO: Puerto para autenticación
+    }
+
+    suspend fun sendUserRegistration(
+        cedula: String,
+        nombreCompleto: String,
+        email: String,
+        telefono: String,
+        empresa: String
+    ) {
+        val userId = getUserId()
+        if (userId == null) {
+            Log.e(TAG, "📝 Error: No user ID available. Cannot send registration.")
+            return
+        }
+
+        withContext(Dispatchers.IO) {
+            try {
+                val url = "https://$SERVER_DOMAIN/api/users/register"
+
+                val requestBody = mapOf(
+                    "user_id" to userId,
+                    "cedula" to cedula,
+                    "nombre_completo" to nombreCompleto,
+                    "email" to email,
+                    "telefono" to telefono,
+                    "empresa" to empresa
+                )
+
+                Log.d(TAG, "📝 Sending user registration via HTTPS")
+                Log.d(TAG, "   UserID: $userId")
+                Log.d(TAG, "   Cedula: $cedula")
+                Log.d(TAG, "   Empresa: $empresa")
+
+                val response: HttpResponse = ApiClient.client.post(url) {
+                    contentType(ContentType.Application.Json)
+                    setBody(requestBody)
+                }
+
+                if (response.status.value == 200) {
+                    Log.d(TAG, "✅ User registration successful")
+                } else {
+                    Log.e(TAG, "❌ Registration failed: HTTP ${response.status.value}")
+                }
+
+            } catch (e: Exception) {
+                Log.e(TAG, "❌ Error sending registration: ${e.message}", e)
+            }
+        }
     }
 
     /**
@@ -113,7 +162,7 @@ class NetworkManager(
             Log.d(TAG, "🌐 Fetching from: $url")
 
             val response: HttpResponse = ApiClient.client.get(url)
-            
+
             if (response.status.value != 200) {
                 Log.w(TAG, "⚠️ HTTP ${response.status.value}")
                 return@withContext null
@@ -182,7 +231,8 @@ class NetworkManager(
         }
     }
 
-    private suspend fun sendViaUDP(message: String) {
+    // ✅ MODIFICADO: Ahora acepta puerto personalizado (default UDP_PORT)
+    private suspend fun sendViaUDP(message: String, port: Int = UDP_PORT) {
         withContext(Dispatchers.IO) {
             var socket: DatagramSocket? = null
             try {
@@ -191,11 +241,11 @@ class NetworkManager(
 
                 val buffer = message.toByteArray(Charsets.UTF_8)
                 val address = InetAddress.getByName(SERVER_DOMAIN)
-                val packet = DatagramPacket(buffer, buffer.size, address, UDP_PORT)
+                val packet = DatagramPacket(buffer, buffer.size, address, port)
 
                 socket.send(packet)
                 Log.d(TAG, "Message: ($message)")
-                Log.d(TAG, "✅ UDP sent to $SERVER_DOMAIN:$UDP_PORT")
+                Log.d(TAG, "✅ UDP sent to $SERVER_DOMAIN:$port")
 
             } catch (e: Exception) {
                 Log.e(TAG, "❌ UDP error: ${e.message}", e)

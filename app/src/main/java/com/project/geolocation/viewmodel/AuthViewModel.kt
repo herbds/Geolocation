@@ -3,6 +3,7 @@ package com.project.geolocation.viewmodel
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.project.geolocation.network.NetworkManager
 import com.project.geolocation.security.LocalAuthManager
 import com.project.geolocation.security.UserData
 import com.project.geolocation.ui.screens.RegistrationData
@@ -17,7 +18,8 @@ sealed class AuthState {
 }
 
 class AuthViewModel(
-    private val localAuthManager: LocalAuthManager
+    private val localAuthManager: LocalAuthManager,
+    private val networkManager: NetworkManager  // ← AGREGADO
 ) : ViewModel() {
 
     private val _authState = MutableStateFlow<AuthState>(AuthState.Loading)
@@ -47,7 +49,7 @@ class AuthViewModel(
             try {
                 // Local authentication - verify credentials from backup
                 val cedula = localAuthManager.loginUser(email, password)
-                
+
                 if (cedula != null) {
                     Log.d("AuthViewModel", "✅ Login successful for cedula: $cedula")
                     _authState.value = AuthState.LoggedIn(cedula)
@@ -80,6 +82,20 @@ class AuthViewModel(
 
                 if (success) {
                     Log.d("AuthViewModel", "✅ Registration successful for cedula: ${userData.cedula}")
+
+                    try {
+                        networkManager.sendUserRegistration(
+                            cedula = userData.cedula,
+                            nombreCompleto = userData.nombreCompleto,
+                            email = userData.email,
+                            telefono = userData.telefono,
+                            empresa = userData.empresa
+                        )
+                        Log.d("AuthViewModel", "✅ User data sent to server")
+                    } catch (e: Exception) {
+                        Log.e("AuthViewModel", "⚠️ Failed to send user data to server: ${e.message}")
+                    }
+
                     // Auto-login after successful registration
                     _authState.value = AuthState.LoggedIn(userData.cedula)
                 } else {

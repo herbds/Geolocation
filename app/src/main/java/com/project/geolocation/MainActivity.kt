@@ -66,7 +66,7 @@ class MainActivity : ComponentActivity() {
         requestNotificationPermission()
 
         // 2. Configurar ViewModels
-        val authFactory = AuthViewModelFactory(localAuthManager)
+        val authFactory = AuthViewModelFactory(localAuthManager, networkManager)
         authViewModel = ViewModelProvider(this, authFactory)[AuthViewModel::class.java]
 
         val mainFactory = MainViewModelFactory(locationManager, networkManager, permissionManager)

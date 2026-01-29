@@ -8,13 +8,14 @@ import com.project.geolocation.permissions.PermissionManager
 import com.project.geolocation.security.LocalAuthManager
 
 class AuthViewModelFactory(
-    private val localAuthManager: LocalAuthManager
+    private val localAuthManager: LocalAuthManager,
+    private val networkManager: NetworkManager
 ) : ViewModelProvider.Factory {
 
     @Suppress("UNCHECKED_CAST")
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
         if (modelClass.isAssignableFrom(AuthViewModel::class.java)) {
-            return AuthViewModel(localAuthManager) as T
+            return AuthViewModel(localAuthManager, networkManager) as T
         }
         throw IllegalArgumentException("Unknown ViewModel class")
     }
