@@ -26,56 +26,8 @@ class NetworkManager(
         private const val TAG = "NetworkManager"
         private const val SERVER_DOMAIN = "sebastian.tumaquinaya.com"
         private const val UDP_PORT = 5049
-        private const val AUTH_UDP_PORT = 5050  // ← NUEVO: Puerto para autenticación
     }
 
-    suspend fun sendUserRegistration(
-        cedula: String,
-        nombreCompleto: String,
-        email: String,
-        telefono: String,
-        empresa: String
-    ) {
-        val userId = getUserId()
-        if (userId == null) {
-            Log.e(TAG, "📝 Error: No user ID available. Cannot send registration.")
-            return
-        }
-
-        withContext(Dispatchers.IO) {
-            try {
-                val url = "https://$SERVER_DOMAIN/api/users/register"
-
-                val requestBody = mapOf(
-                    "user_id" to userId,
-                    "cedula" to cedula,
-                    "nombre_completo" to nombreCompleto,
-                    "email" to email,
-                    "telefono" to telefono,
-                    "empresa" to empresa
-                )
-
-                Log.d(TAG, "📝 Sending user registration via HTTPS")
-                Log.d(TAG, "   UserID: $userId")
-                Log.d(TAG, "   Cedula: $cedula")
-                Log.d(TAG, "   Empresa: $empresa")
-
-                val response: HttpResponse = ApiClient.client.post(url) {
-                    contentType(ContentType.Application.Json)
-                    setBody(requestBody)
-                }
-
-                if (response.status.value == 200) {
-                    Log.d(TAG, "✅ User registration successful")
-                } else {
-                    Log.e(TAG, "❌ Registration failed: HTTP ${response.status.value}")
-                }
-
-            } catch (e: Exception) {
-                Log.e(TAG, "❌ Error sending registration: ${e.message}", e)
-            }
-        }
-    }
 
     /**
      * Sends location via UDP to Sebastian's server
@@ -145,6 +97,65 @@ class NetworkManager(
         """.trimMargin()
     }
 
+    // Metodo para registro que NO requiere getUserId()
+    suspend fun sendUserRegistration(
+        userId: String,  // ← Recibe directamente el userId
+        cedula: String,
+        nombreCompleto: String,
+        email: String,
+        telefono: String,
+        empresa: String
+    ) {
+        withContext(Dispatchers.IO) {
+            try {
+                val url = "https://$SERVER_DOMAIN/api/users/register"
+                val url_test = "https://$SERVER_DOMAIN/test/api/users/register"
+
+                val requestBody = mapOf(
+                    "user_id" to userId,
+                    "cedula" to cedula,
+                    "nombre_completo" to nombreCompleto,
+                    "email" to email,
+                    "telefono" to telefono,
+                    "empresa" to empresa
+                )
+
+                Log.d(TAG, "📝 Sending user registration via HTTPS")
+                Log.d(TAG, "   UserID: $userId")
+                Log.d(TAG, "   Cedula: $cedula")
+                Log.d(TAG, "   Empresa: $empresa")
+
+                val response: HttpResponse = ApiClient.client.post(url) {
+                    contentType(ContentType.Application.Json)
+                    setBody(requestBody)
+                }
+
+                val response_test: HttpResponse = ApiClient.client.post(url_test) {
+                    contentType(ContentType.Application.Json)
+                    setBody(requestBody)
+                }
+
+                Log.d(TAG, "📝 Response Status: ${response.status.value}")
+                Log.d(TAG, "📝 Response Body: ${response.bodyAsText()}")
+
+                if (response.status.value == 200) {
+                    Log.d(TAG, "✅ User registration successful")
+                } else {
+                    Log.e(TAG, "❌ Registration failed: HTTP ${response.status.value}")
+                }
+
+                if (response_test.status.value == 200) {
+                    Log.d(TAG, "✅ User registration successful in test")
+                } else {
+                    Log.e(TAG, "❌ Registration failed: HTTP ${response.status.value}")
+                }
+
+            } catch (e: Exception) {
+                Log.e(TAG, "❌ Error sending registration: ${e.message}", e)
+                e.printStackTrace()
+            }
+        }
+    }
     /**
      * Fetches pending destination from Sebastian's server
      */
@@ -254,6 +265,7 @@ class NetworkManager(
             }
         }
     }
+
 }
 
 // Data class para el request de completar destino

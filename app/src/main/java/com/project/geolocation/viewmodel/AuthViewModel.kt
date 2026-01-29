@@ -19,7 +19,7 @@ sealed class AuthState {
 
 class AuthViewModel(
     private val localAuthManager: LocalAuthManager,
-    private val networkManager: NetworkManager  // ← AGREGADO
+    private val networkManager: NetworkManager
 ) : ViewModel() {
 
     private val _authState = MutableStateFlow<AuthState>(AuthState.Loading)
@@ -81,20 +81,26 @@ class AuthViewModel(
                 val success = localAuthManager.registerUser(userData)
 
                 if (success) {
-                    Log.d("AuthViewModel", "✅ Registration successful for cedula: ${userData.cedula}")
+                    Log.d("AuthViewModel", "✅ Local registration successful for cedula: ${userData.cedula}")
 
+                    // ========== ENVIAR AL SERVIDOR ==========
                     try {
                         networkManager.sendUserRegistration(
+                            userId = userData.cedula,
                             cedula = userData.cedula,
                             nombreCompleto = userData.nombreCompleto,
                             email = userData.email,
                             telefono = userData.telefono,
                             empresa = userData.empresa
                         )
-                        Log.d("AuthViewModel", "✅ User data sent to server")
+                        Log.d("AuthViewModel", "✅ User data sent to server successfully")
                     } catch (e: Exception) {
                         Log.e("AuthViewModel", "⚠️ Failed to send user data to server: ${e.message}")
+                        e.printStackTrace()
+                        // Nota: Continuamos con el login aunque falle el envío al servidor
+                        // El usuario queda registrado localmente de todas formas
                     }
+                    // =========================================
 
                     // Auto-login after successful registration
                     _authState.value = AuthState.LoggedIn(userData.cedula)
@@ -104,6 +110,7 @@ class AuthViewModel(
                 }
             } catch (e: Exception) {
                 Log.e("AuthViewModel", "❌ Registration error: ${e.message}")
+                e.printStackTrace()
                 _authState.value = AuthState.LoggedOut(e.message ?: "Error desconocido")
             }
         }
