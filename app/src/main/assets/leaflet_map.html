@@ -1,341 +1,394 @@
 <!DOCTYPE html>
 <html>
-<head>
+  <head>
     <title>Mapa</title>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link
+      rel="stylesheet"
+      href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+    />
     <style>
-        html, body, #mapid {
-            height: 100%;
-            width: 100%;
-            margin: 0;
-            padding: 0;
-        }
+      html,
+      body,
+      #mapid {
+        height: 100%;
+        width: 100%;
+        margin: 0;
+        padding: 0;
+      }
 
+      /* Caja de información */
+      .info-box {
+        position: absolute;
+        bottom: 10px;
+        left: 10px;
+        z-index: 1000;
+        background: white;
+        padding: 10px 15px;
+        border-radius: 8px;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+        font-family: Arial, sans-serif;
+        display: none;
+      }
+      .info-box .label {
+        font-weight: bold;
+        color: #4c1d95;
+      }
+      .info-box .value {
+        color: #333;
+        margin-left: 5px;
+      }
 
-        /* Caja de información */
-        .info-box {
-            position: absolute;
-            bottom: 10px;
-            left: 10px;
-            z-index: 1000;
-            background: white;
-            padding: 10px 15px;
-            border-radius: 8px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
-            font-family: Arial, sans-serif;
-            display: none;
-        }
-        .info-box .label {
-            font-weight: bold;
-            color: #4C1D95;
-        }
-        .info-box .value {
-            color: #333;
-            margin-left: 5px;
-        }
+      /* ✅ NUEVO: Alerta de desviación de ruta */
+      .route-alert {
+        position: absolute;
+        top: 10px;
+        left: 50%;
+        transform: translateX(-50%);
+        z-index: 1001;
+        background: linear-gradient(135deg, #fee2e2 0%, #fecaca 100%);
+        border: 2px solid #ef4444;
+        border-radius: 12px;
+        padding: 12px 20px;
+        box-shadow: 0 4px 12px rgba(239, 68, 68, 0.4);
+        font-family: Arial, sans-serif;
+        font-weight: bold;
+        color: #991b1b;
+        display: none;
+        animation: shake 0.5s ease-in-out;
+        max-width: 90%;
+      }
 
-        /* ✅ NUEVO: Alerta de desviación de ruta */
-        .route-alert {
-            position: absolute;
-            top: 10px;
-            left: 50%;
-            transform: translateX(-50%);
-            z-index: 1001;
-            background: linear-gradient(135deg, #FEE2E2 0%, #FECACA 100%);
-            border: 2px solid #EF4444;
-            border-radius: 12px;
-            padding: 12px 20px;
-            box-shadow: 0 4px 12px rgba(239, 68, 68, 0.4);
-            font-family: Arial, sans-serif;
-            font-weight: bold;
-            color: #991B1B;
-            display: none;
-            animation: shake 0.5s ease-in-out;
-            max-width: 90%;
-        }
+      .route-alert.show {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
 
-        .route-alert.show {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-        }
+      .route-alert .icon {
+        font-size: 1.5rem;
+        animation: pulse 1.5s ease-in-out infinite;
+      }
 
-        .route-alert .icon {
-            font-size: 1.5rem;
-            animation: pulse 1.5s ease-in-out infinite;
+      @keyframes shake {
+        0%,
+        100% {
+          transform: translateX(-50%) translateY(0);
         }
+        25% {
+          transform: translateX(-50%) translateY(-5px);
+        }
+        75% {
+          transform: translateX(-50%) translateY(5px);
+        }
+      }
 
-        @keyframes shake {
-            0%, 100% { transform: translateX(-50%) translateY(0); }
-            25% { transform: translateX(-50%) translateY(-5px); }
-            75% { transform: translateX(-50%) translateY(5px); }
+      @keyframes pulse {
+        0%,
+        100% {
+          transform: scale(1);
         }
-
-        @keyframes pulse {
-            0%, 100% { transform: scale(1); }
-            50% { transform: scale(1.2); }
+        50% {
+          transform: scale(1.2);
         }
+      }
     </style>
-</head>
-<body>
+  </head>
+  <body>
+    <div id="mapid"></div>
+    <button
+      id="clearBtn"
+      class="clear-destination-btn"
+      onclick="clearDestination()"
+    >
+      ✖ Limpiar Destino
+    </button>
 
-<div id="mapid"></div>
-<button id="clearBtn" class="clear-destination-btn" onclick="clearDestination()">✖ Limpiar Destino</button>
+    <!-- ✅ NUEVA: Alerta de desviación -->
+    <div id="routeAlert" class="route-alert">
+      <span class="icon">⚠️</span>
+      <span id="alertText">Te saliste de la ruta predefinida</span>
+    </div>
 
-<!-- ✅ NUEVA: Alerta de desviación -->
-<div id="routeAlert" class="route-alert">
-    <span class="icon">⚠️</span>
-    <span id="alertText">Te saliste de la ruta predefinida</span>
-</div>
+    <div id="infoBox" class="info-box">
+      <span class="label">Distancia:</span>
+      <span class="value" id="distanceText">-</span>
+    </div>
 
-<div id="infoBox" class="info-box">
-    <span class="label">Distancia:</span>
-    <span class="value" id="distanceText">-</span>
-</div>
-
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<script>
-    // Captura errores de JS
-    window.onerror = function(msg, url, line, col, error) {
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script>
+      // Captura errores de JS
+      window.onerror = function (msg, url, line, col, error) {
         console.error("❌ JS ERROR:", msg, "en línea", line);
         return false;
-    };
+      };
 
-    console.log("🗺️ Inicializando mapa...");
+      console.log("🗺️ Inicializando mapa...");
 
-    // Crear mapa centrado en Barranquilla
-    var map = L.map('mapid').setView([11.0087601, -74.7943065], 13);
-    var currentMarker = null;
-    var destinationMarker = null;
-    var routeLine = null;
+      // Crear mapa centrado en Barranquilla
+      var map = L.map("mapid").setView([11.0087601, -74.7943065], 13);
+      var currentMarker = null;
+      var destinationMarker = null;
+      var routeLine = null;
 
-    var currentLocation = null;
-    var destinationLocation = null;
+      var currentLocation = null;
+      var destinationLocation = null;
 
-    // ✅ NUEVAS: Variables para detección de desviación
-    var routeCoordinates = null; // Almacenar coordenadas de la ruta OSRM
-    var isOffRoute = false;
-    var offRouteThreshold = 100; // Metros de tolerancia
-    var alertTimeout = null;
+      // ✅ NUEVAS: Variables para detección de desviación
+      var routeCoordinates = null; // Almacenar coordenadas de la ruta OSRM
+      var isOffRoute = false;
+      var offRouteThreshold = 100; // Metros de tolerancia
+      var alertTimeout = null;
 
-    // Capa de OpenStreetMap
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      // Capa de OpenStreetMap
+      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
         maxZoom: 19,
-        attribution: '© OpenStreetMap'
-    }).addTo(map);
+        attribution: "© OpenStreetMap",
+      }).addTo(map);
 
-    console.log("✅ Mapa creado");
+      console.log("✅ Mapa creado");
 
-    // Icono azul para la ubicación actual
-    var currentIcon = L.icon({
-        iconUrl: 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjQiIGhlaWdodD0iMjQiIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPGNpcmNsZSBjeD0iMTIiIGN5PSIxMiIgcj0iMTAiIGZpbGw9IiMyNTYzRUIiLz4KPGNpcmNsZSBjeD0iMTIiIGN5PSIxMiIgcj0iNiIgZmlsbD0id2hpdGUiLz4KPC9zdmc+',
+      // Icono azul para la ubicación actual
+      var currentIcon = L.icon({
+        iconUrl:
+          "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjQiIGhlaWdodD0iMjQiIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPGNpcmNsZSBjeD0iMTIiIGN5PSIxMiIgcj0iMTAiIGZpbGw9IiMyNTYzRUIiLz4KPGNpcmNsZSBjeD0iMTIiIGN5PSIxMiIgcj0iNiIgZmlsbD0id2hpdGUiLz4KPC9zdmc+",
         iconSize: [24, 24],
         iconAnchor: [12, 12],
-    });
+      });
 
-    // Icono rojo para el destino
-    var destinationIcon = L.icon({
-        iconUrl: 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMzIiIGhlaWdodD0iMzIiIHZpZXdCb3g9IjAgMCAzMiAzMiIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHBhdGggZD0iTTE2IDNDMTEuMDMgMyA3IDcuMDMgNyAxMkM3IDE4Ljc1IDE2IDI5IDE2IDI5QzE2IDI5IDI1IDE4Ljc1IDI1IDEyQzI1IDcuMDMgMjAuOTcgMyAxNiAzWk0xNiAxNUMxNC4zNSAxNSAxMyAxMy42NSAxMyAxMkMxMyAxMC4zNSAxNC4zNSA5IDE2IDlDMTcuNjUgOSAxOSAxMC4zNSAxOSAxMkMxOSAxMy42NSAxNy42NSAxNSAxNiAxNVoiIGZpbGw9IiNFRjQ0NDQiLz4KPC9zdmc+',
+      // Icono rojo para el destino
+      var destinationIcon = L.icon({
+        iconUrl:
+          "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMzIiIGhlaWdodD0iMzIiIHZpZXdCb3g9IjAgMCAzMiAzMiIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHBhdGggZD0iTTE2IDNDMTEuMDMgMyA3IDcuMDMgNyAxMkM3IDE4Ljc1IDE2IDI5IDE2IDI5QzE2IDI5IDI1IDE4Ljc1IDI1IDEyQzI1IDcuMDMgMjAuOTcgMyAxNiAzWk0xNiAxNUMxNC4zNSAxNSAxMyAxMy42NSAxMyAxMkMxMyAxMC4zNSAxNC4zNSA5IDE2IDlDMTcuNjUgOSAxOSAxMC4zNSAxOSAxMkMxOSAxMy42NSAxNy42NSAxNSAxNiAxNVoiIGZpbGw9IiNFRjQ0NDQiLz4KPC9zdmc+",
         iconSize: [32, 32],
         iconAnchor: [16, 32],
-    });
+      });
 
-    /**
-     * Actualizar la ubicación actual desde Android
-     */
-    function updateLocation(lat, lon) {
+      /**
+       * Actualizar la ubicación actual desde Android
+       */
+      function updateLocation(lat, lon) {
         console.log("📍 updateLocation:", lat, lon);
         var newLatLng = L.latLng(lat, lon);
         currentLocation = newLatLng;
 
         if (currentMarker) {
-            currentMarker.setLatLng(newLatLng);
+          currentMarker.setLatLng(newLatLng);
         } else {
-            currentMarker = L.marker(newLatLng, {icon: currentIcon}).addTo(map)
-                .bindPopup("📍 Mi Ubicación");
+          currentMarker = L.marker(newLatLng, { icon: currentIcon })
+            .addTo(map)
+            .bindPopup("📍 Mi Ubicación");
         }
 
         map.setView(newLatLng);
 
         // ✅ NUEVO: Verificar si está fuera de ruta
         if (destinationLocation && routeCoordinates) {
-            checkIfOffRoute(newLatLng);
+          checkIfOffRoute(newLatLng);
         }
 
         if (destinationLocation) updateRouteLine();
 
         return "OK";
-    }
+      }
 
-    /**
-     * Establecer destino (llamado desde Android)
-     */
-    function setDestination(lat, lon) {
+      /**
+       * Establecer destino (llamado desde Android)
+       */
+      function setDestination(lat, lon) {
         console.log("🎯 setDestination:", lat, lon);
         var destLatLng = L.latLng(lat, lon);
         destinationLocation = destLatLng;
 
         if (destinationMarker) {
-            destinationMarker.setLatLng(destLatLng);
+          destinationMarker.setLatLng(destLatLng);
         } else {
-            destinationMarker = L.marker(destLatLng, {icon: destinationIcon}).addTo(map)
-                .bindPopup("🎯 Destino");
+          destinationMarker = L.marker(destLatLng, { icon: destinationIcon })
+            .addTo(map)
+            .bindPopup("🎯 Destino");
         }
 
         // Mostrar botón de limpiar
-        document.getElementById('clearBtn').style.display = 'block';
+        document.getElementById("clearBtn").style.display = "block";
 
         // Si hay ubicación actual, dibujar ruta
         if (currentLocation) {
-            updateRouteLine();
+          updateRouteLine();
         }
 
         return "OK";
-    }
+      }
 
-    /**
-     * Dibujar ruta por calles usando OSRM
-     */
-    function updateRouteLine() {
-        if (!currentLocation || !destinationLocation) return;
+      /**
+       * Dibujar ruta por calles usando OSRM
+       */
+      function updateRouteLine() {
+        if (!currentLocation || !destinationLocation) {
+          console.log("⚠️ updateRouteLine: Faltan datos");
+          return;
+        }
 
         console.log("🚗 Solicitando ruta OSRM...");
+        console.log("   Desde:", currentLocation.lat, currentLocation.lng);
+        console.log(
+          "   Hasta:",
+          destinationLocation.lat,
+          destinationLocation.lng
+        );
 
-        var url = `https://sebastian.tumaquinaya.com/osrm/route/v1/driving/` +
-            `${currentLocation.lng},${currentLocation.lat};${destinationLocation.lng},${destinationLocation.lat}` +
-            `?overview=full&geometries=geojson`;
+        var url =
+          `https://sebastian.tumaquinaya.com/osrm/route/v1/driving/` +
+          `${currentLocation.lng},${currentLocation.lat};${destinationLocation.lng},${destinationLocation.lat}` +
+          `?overview=full&geometries=geojson`;
+
+        console.log("🌐 URL:", url);
 
         fetch(url)
-            .then(response => response.json())
-            .then(data => {
-                if (data.routes && data.routes.length > 0) {
-                    var route = data.routes[0];
-                    var coords = route.geometry.coordinates.map(c => [c[1], c[0]]); // invertir [lon, lat]
+          .then((response) => {
+            console.log("📡 Response status:", response.status);
+            return response.json();
+          })
+          .then((data) => {
+            console.log("📦 Data recibida");
 
-                    // ✅ NUEVO: Guardar coordenadas de la ruta para verificación
-                    routeCoordinates = coords;
+            if (data.routes && data.routes.length > 0) {
+              var route = data.routes[0];
+              var coords = route.geometry.coordinates.map((c) => [c[1], c[0]]);
 
-                    if (routeLine) map.removeLayer(routeLine);
-                    routeLine = L.polyline(coords, {
-                        color: '#4C1D95',
-                        weight: 4,
-                        opacity: 0.8
-                    }).addTo(map);
+              console.log("📍 Coordenadas de ruta:", coords.length, "puntos");
 
-                    // Mostrar distancia
-                    var distanceKm = (route.distance / 1000).toFixed(2);
-                    document.getElementById('distanceText').textContent = distanceKm + " km";
-                    document.getElementById('infoBox').style.display = 'block';
+              // ✅ Guardar coordenadas para verificación de desviación
+              routeCoordinates = coords;
 
-                    console.log("📏 Ruta calculada correctamente:", distanceKm, "km");
-                } else {
-                    console.warn("⚠️ No se encontró ruta OSRM");
-                }
-            })
-            .catch(err => {
-                console.error("❌ Error al obtener ruta OSRM:", err);
-            });
-    }
+              // ✅ DIBUJAR LA LÍNEA EN EL MAPA
+              if (routeLine) {
+                map.removeLayer(routeLine);
+              }
 
-    /**
-     * ✅ NUEVA: Verificar si el vehículo se salió de la ruta
-     */
-    function checkIfOffRoute(currentPos) {
+              routeLine = L.polyline(coords, {
+                color: "#4C1D95",
+                weight: 4,
+                opacity: 0.8,
+              }).addTo(map);
+
+              // Mostrar distancia
+              var distanceKm = (route.distance / 1000).toFixed(2);
+              document.getElementById("distanceText").textContent =
+                distanceKm + " km";
+              document.getElementById("infoBox").style.display = "block";
+
+              console.log("✅ Ruta dibujada:", distanceKm, "km");
+            } else {
+              console.warn("⚠️ No se encontró ruta en la respuesta");
+            }
+          })
+          .catch((err) => {
+            console.error("❌ FETCH ERROR:", err.name);
+            console.error("❌ Mensaje:", err.message);
+          });
+      }
+
+      /**
+       * ✅ NUEVA: Verificar si el vehículo se salió de la ruta
+       */
+      function checkIfOffRoute(currentPos) {
         if (!routeCoordinates || routeCoordinates.length === 0) {
-            return;
+          return;
         }
 
         // Calcular la distancia mínima a la ruta
         var minDistance = Infinity;
 
         for (var i = 0; i < routeCoordinates.length; i++) {
-            var routePoint = L.latLng(routeCoordinates[i]);
-            var distance = currentPos.distanceTo(routePoint);
+          var routePoint = L.latLng(routeCoordinates[i]);
+          var distance = currentPos.distanceTo(routePoint);
 
-            if (distance < minDistance) {
-                minDistance = distance;
-            }
+          if (distance < minDistance) {
+            minDistance = distance;
+          }
         }
 
         console.log(`📏 Distancia a la ruta: ${minDistance.toFixed(2)}m`);
 
         // Si está a más de 50 metros de la ruta
         if (minDistance > offRouteThreshold) {
-            if (!isOffRoute) {
-                isOffRoute = true;
-                showOffRouteAlert();
-                notifyAndroid("off_route", minDistance);
-            }
+          if (!isOffRoute) {
+            isOffRoute = true;
+            showOffRouteAlert();
+            notifyAndroid("off_route", minDistance);
+          }
         } else {
-            if (isOffRoute) {
-                isOffRoute = false;
-                hideOffRouteAlert();
-                notifyAndroid("on_route", minDistance);
-            }
+          if (isOffRoute) {
+            isOffRoute = false;
+            hideOffRouteAlert();
+            notifyAndroid("on_route", minDistance);
+          }
         }
-    }
+      }
 
-    /**
-     * ✅ NUEVA: Mostrar alerta de desviación
-     */
-    function showOffRouteAlert() {
-        var alert = document.getElementById('routeAlert');
-        alert.classList.add('show');
+      /**
+       * ✅ NUEVA: Mostrar alerta de desviación
+       */
+      function showOffRouteAlert() {
+        var alert = document.getElementById("routeAlert");
+        alert.classList.add("show");
 
         console.log("⚠️ ALERTA: Te saliste de la ruta");
 
         // Ocultar automáticamente después de 5 segundos
         if (alertTimeout) clearTimeout(alertTimeout);
-        alertTimeout = setTimeout(function() {
-            if (isOffRoute) {
-                // Si sigue fuera de ruta, mostrar de nuevo
-                alert.classList.remove('show');
-                setTimeout(showOffRouteAlert, 100);
-            }
+        alertTimeout = setTimeout(function () {
+          if (isOffRoute) {
+            // Si sigue fuera de ruta, mostrar de nuevo
+            alert.classList.remove("show");
+            setTimeout(showOffRouteAlert, 100);
+          }
         }, 5000);
-    }
+      }
 
-    /**
-     * ✅ NUEVA: Ocultar alerta de desviación
-     */
-    function hideOffRouteAlert() {
-        var alert = document.getElementById('routeAlert');
-        alert.classList.remove('show');
+      /**
+       * ✅ NUEVA: Ocultar alerta de desviación
+       */
+      function hideOffRouteAlert() {
+        var alert = document.getElementById("routeAlert");
+        alert.classList.remove("show");
 
         if (alertTimeout) {
-            clearTimeout(alertTimeout);
-            alertTimeout = null;
+          clearTimeout(alertTimeout);
+          alertTimeout = null;
         }
 
         console.log("✅ De vuelta en la ruta");
-    }
+      }
 
-    /**
-     * ✅ NUEVA: Notificar a Android sobre el estado de la ruta
-     */
-    function notifyAndroid(status, distance) {
+      /**
+       * ✅ NUEVA: Notificar a Android sobre el estado de la ruta
+       */
+      function notifyAndroid(status, distance) {
         try {
-            if (window.Android && typeof Android.onRouteStatusChanged === "function") {
-                Android.onRouteStatusChanged(status, distance);
-            }
+          if (
+            window.Android &&
+            typeof Android.onRouteStatusChanged === "function"
+          ) {
+            Android.onRouteStatusChanged(status, distance);
+          }
         } catch (err) {
-            console.error("⚠️ Error notificando a Android:", err);
+          console.error("⚠️ Error notificando a Android:", err);
         }
-    }
+      }
 
-    /**
-     * Limpiar destino
-     */
-    function clearDestination() {
+      /**
+       * Limpiar destino
+       */
+      function clearDestination() {
         if (destinationMarker) {
-            map.removeLayer(destinationMarker);
-            destinationMarker = null;
+          map.removeLayer(destinationMarker);
+          destinationMarker = null;
         }
         if (routeLine) {
-            map.removeLayer(routeLine);
-            routeLine = null;
+          map.removeLayer(routeLine);
+          routeLine = null;
         }
         destinationLocation = null;
 
@@ -344,8 +397,8 @@
         isOffRoute = false;
         hideOffRouteAlert();
 
-        document.getElementById('clearBtn').style.display = 'none';
-        document.getElementById('infoBox').style.display = 'none';
+        document.getElementById("clearBtn").style.display = "none";
+        document.getElementById("infoBox").style.display = "none";
 
         if (currentLocation) map.setView(currentLocation, 15);
 
@@ -353,17 +406,20 @@
 
         // Notificar a Android
         try {
-            if (window.Android && typeof Android.onDestinationCleared === "function") {
-                Android.onDestinationCleared();
-            }
+          if (
+            window.Android &&
+            typeof Android.onDestinationCleared === "function"
+          ) {
+            Android.onDestinationCleared();
+          }
         } catch (err) {
-            console.error("⚠️ Error notificando limpieza:", err);
+          console.error("⚠️ Error notificando limpieza:", err);
         }
 
         return "OK";
-    }
+      }
 
-    console.log("✅ Script cargado y listo");
-</script>
-</body>
+      console.log("✅ Script cargado y listo");
+    </script>
+  </body>
 </html>

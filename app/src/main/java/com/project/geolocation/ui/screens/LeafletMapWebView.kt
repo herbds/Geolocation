@@ -110,7 +110,7 @@ fun LeafletMapWebView(
                         currentLocation?.let { location ->
                             val lat = location.latitude
                             val lon = location.longitude
-                            val jsCode = "javascript:updateLocation($lat, $lon)"
+                            val jsCode = "updateLocation($lat, $lon)"
                             Log.d("WebViewMap", "📍 Ejecutando: $jsCode")
 
                             postDelayed({
@@ -147,7 +147,7 @@ fun LeafletMapWebView(
                 currentLocation?.let { location ->
                     val lat = location.latitude
                     val lon = location.longitude
-                    val jsCode = "javascript:updateLocation($lat, $lon)"
+                    val jsCode = "updateLocation($lat, $lon)"
 
                     webView.evaluateJavascript(jsCode) { result ->
                         Log.d("WebViewMap", "🔄 Actualizado: $result")
