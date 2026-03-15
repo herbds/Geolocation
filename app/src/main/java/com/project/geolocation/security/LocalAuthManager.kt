@@ -82,6 +82,10 @@ class LocalAuthManager(context: Context) {
                 .putString(KEY_ACTIVE_CEDULA, userData.cedula)
                 .apply()
 
+            loggedUserPrefs.edit()
+                .putString(KEY_LOGGED_CEDULA, userData.cedula)
+                .apply()
+
             Log.d(TAG, "✅ User registered successfully: ${userData.cedula}")
             true
         } catch (e: Exception) {
