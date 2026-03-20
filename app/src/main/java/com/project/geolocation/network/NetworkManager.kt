@@ -169,7 +169,7 @@ class NetworkManager(
         Log.d(TAG, "🎯 Fetching destinations for user: $userId")
 
         try {
-            val url = "https://$SERVER_DOMAIN/database/destination/$userId"
+            val url = "https://$SERVER_DOMAIN/test/database/destination/$userId"
             Log.d(TAG, "🌐 Fetching from: $url")
 
             val response: HttpResponse = ApiClient.client.get(url)
@@ -221,7 +221,7 @@ class NetworkManager(
         }
 
         try {
-            val url = "https://$SERVER_DOMAIN/api/destination/complete"
+            val url = "https://$SERVER_DOMAIN/test/api/destination/complete"
             Log.d(TAG, "🏁 Completing destination for user: $userId")
 
             val response: HttpResponse = ApiClient.client.post(url) {
