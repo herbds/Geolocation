@@ -101,23 +101,32 @@ class MainViewModel(
     private fun completeTrip() {
         viewModelScope.launch {
             try {
-                // 1. Notificar al servidor que llegamos
+                // 1. Notificar al servidor
                 val success = networkManager.completeDestination()
-                
+
                 if (success) {
                     android.util.Log.d(TAG, "🏁 Viaje completado exitosamente")
                     arrivedAtDestination = true
-                    
-                    // Ocultar el mensaje después de 3 segundos
-                    delay(3000)
-                    arrivedAtDestination = false
-                } else {
-                    android.util.Log.w(TAG, "⚠️ No se pudo notificar al servidor")
                 }
-                
-                // 2. Limpiar el destino local
-                clearDestination()
-                
+
+                // 2. Inmediatamente buscar el siguiente destino
+                val nextDestination = networkManager.fetchPendingDestination()
+
+                if (nextDestination != null) {
+                    // Hay otro destino pendiente → asignarlo directo
+                    android.util.Log.d(TAG, "🎯 Siguiente destino: ${nextDestination.buildingName}")
+                    pendingDestination = nextDestination
+                } else {
+                    // No hay más destinos → limpiar
+                    clearDestination()
+                }
+
+                // 3. Ocultar mensaje de llegada después de 2 segundos (no bloquea)
+                if (arrivedAtDestination) {
+                    delay(2000)
+                    arrivedAtDestination = false
+                }
+
             } catch (e: Exception) {
                 android.util.Log.e(TAG, "Error completando viaje: ${e.message}")
                 clearDestination()

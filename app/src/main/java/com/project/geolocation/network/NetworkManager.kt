@@ -184,23 +184,16 @@ class NetworkManager(
 
             val pendingDestination = destinationResponse.destinations
                 .filter { it.status == "pending" }
-                .maxByOrNull { destination ->
-                    try {
-                        val dateFormat = SimpleDateFormat("dd/MM/yyyy HH:mm:ss", Locale.getDefault())
-                        dateFormat.parse(destination.created_at)?.time ?: 0L
-                    } catch (e: Exception) {
-                        Log.e(TAG, "Error parsing date: ${destination.created_at}", e)
-                        0L
-                    }
-                }
+                .minByOrNull { it.order_index }
 
             pendingDestination?.let {
-                Log.d(TAG, "🎯 Pending destination: ${it.latitude}, ${it.longitude}")
+                Log.d(TAG, "🎯 Pending destination: ${it.latitude}, ${it.longitude} - ${it.building_name}")
                 PendingDestination(
                     latitude = it.latitude,
                     longitude = it.longitude,
                     timestamp = it.created_at,
-                    source = SERVER_DOMAIN
+                    source = SERVER_DOMAIN,
+                    buildingName = it.building_name
                 )
             }
 
