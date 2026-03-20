@@ -24,13 +24,13 @@ class NetworkManager(
 
     companion object {
         private const val TAG = "NetworkManager"
-        private const val SERVER_DOMAIN = "sebastian.tumaquinaya.com"
+        private const val SERVER_DOMAIN = "hernando.tumaquinaya.com"
         private const val UDP_PORT = 5049
     }
 
 
     /**
-     * Sends location via UDP to Sebastian's server
+     * Sends location via UDP to Hernando's server
      */
     suspend fun broadcastLocationUdp(location: Location) {
         val userId = getUserId()
@@ -157,7 +157,7 @@ class NetworkManager(
         }
     }
     /**
-     * Fetches pending destination from Sebastian's server
+     * Fetches pending destination from Hernando's server
      */
     suspend fun fetchPendingDestination(): PendingDestination? = withContext(Dispatchers.IO) {
         val userId = getUserId()

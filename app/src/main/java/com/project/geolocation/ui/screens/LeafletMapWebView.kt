@@ -139,7 +139,16 @@ fun LeafletMapWebView(
 
                 webViewState.value = this
                 Log.d("WebViewMap", "🌐 Cargando HTML...")
-                loadUrl("file:///android_asset/leaflet_map.html")
+                val htmlContent = context.assets.open("leaflet_map.html")
+                    .bufferedReader()
+                    .use { it.readText() }
+                loadDataWithBaseURL(
+                    "https://app.localhost/",  // Referer que OSM aceptará
+                    htmlContent,
+                    "text/html",
+                    "UTF-8",
+                    null
+                )
             }
         },
         update = { webView ->
